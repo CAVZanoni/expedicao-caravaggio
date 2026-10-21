@@ -1,0 +1,34 @@
+# Next.js e Dependências
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# Variáveis de Ambiente e Credenciais Sensíveis
+.env
+.env*.local
+ACESSO.txt
+pasta_onedrive.txt
+
+# Arquivos de Mídia Pesados Locais (1.6+ GB de fotos/vídeos WhatsApp)
+Conversa do WhatsApp com CÂNIONS CARAVAGGIO/
+tempmediaStorage/
+
+# Arquivos GPX brutos (Já processados e compilados em data/expedicao.json)
+*.gpx
+
+# Arquivos de log e depuração local de scripts
+playlist_debug.json
+matched_videos.json
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema Operacional e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
