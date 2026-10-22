@@ -291,9 +291,24 @@ export default function Map({
         }
 
         if (isVisible && etapa.bounds) {
-          bounds.extend([etapa.bounds.min_lon, etapa.bounds.min_lat]);
-          bounds.extend([etapa.bounds.max_lon, etapa.bounds.max_lat]);
-          hasCoordinates = true;
+          const minLon = Number(etapa.bounds.min_lon);
+          const minLat = Number(etapa.bounds.min_lat);
+          const maxLon = Number(etapa.bounds.max_lon);
+          const maxLat = Number(etapa.bounds.max_lat);
+
+          if (!isNaN(minLon) && !isNaN(minLat) && !isNaN(maxLon) && !isNaN(maxLat)) {
+            bounds.extend([minLon, minLat]);
+            bounds.extend([maxLon, maxLat]);
+            hasCoordinates = true;
+          } else if (etapa.bounds.centro && Array.isArray(etapa.bounds.centro) && etapa.bounds.centro.length === 2) {
+            const cLat = Number(etapa.bounds.centro[0]);
+            const cLon = Number(etapa.bounds.centro[1]);
+            if (!isNaN(cLat) && !isNaN(cLon)) {
+              bounds.extend([cLon - 0.15, cLat - 0.15]);
+              bounds.extend([cLon + 0.15, cLat + 0.15]);
+              hasCoordinates = true;
+            }
+          }
         }
       });
 
@@ -322,11 +337,18 @@ export default function Map({
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
+    // Filtrar apenas mídias com coordenadas válidas (ignorar 0,0 ou nulas)
+    const midiasValidas = midias.filter((m) => {
+      const lat = Number(m.latitude);
+      const lon = Number(m.longitude);
+      return !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0);
+    });
+
     // Filtrar mídias pelo dia selecionado
     const etapaAtual = etapas.find((e) => e.numero_dia === diaSelecionado);
     const midiasToRender = diaSelecionado
-      ? midias.filter((m) => m.etapa_id === etapaAtual?.id)
-      : midias;
+      ? midiasValidas.filter((m) => m.etapa_id === etapaAtual?.id)
+      : midiasValidas;
 
     // 1. Agrupar mídias muito próximas (distância geográfica < 180 metros)
     const clusters: MidiaCluster[] = [];
