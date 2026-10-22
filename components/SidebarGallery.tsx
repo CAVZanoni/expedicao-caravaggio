@@ -17,6 +17,9 @@ import {
   ChevronRight,
   Filter,
   Check,
+  Lock,
+  MapPin,
+  Play,
 } from 'lucide-react';
 import DroneIcon from '@/components/icons/DroneIcon';
 
@@ -28,6 +31,7 @@ interface SidebarGalleryProps {
   diaSelecionado: number | null;
   onSelectDia: (dia: number | null) => void;
   onSelectMidia: (midia: Midia) => void;
+  onFocusOnMap?: (midia: Midia) => void;
   hoveredMidiaId: string | null;
   onHoverMidia: (id: string | null) => void;
   config?: ExpedicaoConfig | null;
@@ -44,6 +48,7 @@ export default function SidebarGallery({
   diaSelecionado,
   onSelectDia,
   onSelectMidia,
+  onFocusOnMap,
   hoveredMidiaId,
   onHoverMidia,
   config,
@@ -500,16 +505,28 @@ export default function SidebarGallery({
                 const isSelected = selectedIds.has(m.id);
                 const isHighlighted = m.id === hoveredMidiaId;
                 const isDrone = m.tipo === 'video_drone';
+                const isVideo = m.tipo === 'video';
+                const isPrivate = !!m.is_private;
+                const hasCoords = m.latitude !== null && m.longitude !== null && m.latitude !== 0 && m.longitude !== 0;
+                const etapaMidia = etapas.find((e) => e.id === m.etapa_id);
 
                 return (
                   <div
                     key={m.id}
-                    onClick={() => onSelectMidia(m)}
+                    onClick={() => {
+                      if (hasCoords && onFocusOnMap) {
+                        onFocusOnMap(m);
+                      } else {
+                        onSelectMidia(m);
+                      }
+                    }}
                     onMouseEnter={() => onHoverMidia(m.id)}
                     onMouseLeave={() => onHoverMidia(null)}
                     className={`group relative rounded-xl overflow-hidden border cursor-pointer transition-all duration-200 bg-slate-950/80 ${
                       isHighlighted
                         ? 'border-orange-500 ring-2 ring-orange-500/50 scale-[1.02] shadow-xl'
+                        : isPrivate
+                        ? 'border-amber-500/50 ring-1 ring-amber-500/30 hover:border-amber-400 bg-amber-950/10'
                         : isSelected
                         ? 'border-orange-400/80 ring-1 ring-orange-400/30'
                         : 'border-slate-800 hover:border-slate-600'
@@ -530,7 +547,7 @@ export default function SidebarGallery({
                       {/* Checkbox de Seleção no Canto Superior Esquerdo */}
                       <button
                         onClick={(ev) => toggleSelect(m.id, ev)}
-                        className={`absolute top-1.5 left-1.5 p-1 rounded-md backdrop-blur-md transition ${
+                        className={`absolute top-1.5 left-1.5 p-1 rounded-md backdrop-blur-md transition z-10 ${
                           isSelected
                             ? 'bg-orange-600 text-white shadow-md'
                             : 'bg-slate-900/70 text-slate-300 hover:text-white border border-white/20'
@@ -544,36 +561,80 @@ export default function SidebarGallery({
                         )}
                       </button>
 
+                      {/* Badge de Privado */}
+                      {isPrivate && (
+                        <div
+                          className="absolute top-1.5 left-8 bg-amber-500/90 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md border border-amber-300 backdrop-blur-md z-10"
+                          title="Mídia Privada (Visível somente para Administrador)"
+                        >
+                          <Lock className="w-2.5 h-2.5 stroke-[3]" />
+                          <span>Privado</span>
+                        </div>
+                      )}
+
                       {/* Badge de Drone / Vídeo */}
                       {isDrone ? (
-                        <div className="absolute top-1.5 right-1.5 bg-red-600/95 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md">
+                        <div className="absolute top-1.5 right-1.5 bg-red-600/95 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md z-10">
                           <DroneIcon className="w-3 h-3 text-white" />
                           <span>4K</span>
                         </div>
-                      ) : m.tipo === 'video' ? (
-                        <div className="absolute top-1.5 right-1.5 bg-sky-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md">
+                      ) : isVideo ? (
+                        <div className="absolute top-1.5 right-1.5 bg-sky-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md z-10">
                           <Video className="w-2.5 h-2.5" />
                           <span>Vídeo</span>
                         </div>
                       ) : null}
 
-                      {/* Badge de Km no Trajeto ou Pré-viagem sobre a foto */}
+                      {/* Botão de Play Central para Vídeos (Abre Player Direto) */}
+                      {(isDrone || isVideo) && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onSelectMidia(m);
+                          }}
+                          className="absolute inset-0 m-auto w-10 h-10 rounded-full bg-slate-900/75 hover:bg-orange-600 text-white flex items-center justify-center transition shadow-2xl backdrop-blur-sm border border-white/30 hover:scale-110 active:scale-95 z-10"
+                          title="Assistir a este vídeo em tela cheia"
+                        >
+                          <Play className="w-4 h-4 fill-white ml-0.5" />
+                        </button>
+                      )}
+
+                      {/* Badge de Km no Trajeto ou Etapa sobre a foto */}
                       {m.km_no_trajeto !== undefined && m.km_no_trajeto !== null ? (
-                        <div className="absolute bottom-1.5 left-1.5 bg-slate-900/90 text-orange-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded backdrop-blur-md border border-orange-500/40 shadow-md flex items-center gap-1 select-none">
+                        <div className="absolute bottom-1.5 left-1.5 bg-slate-900/90 text-orange-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded backdrop-blur-md border border-orange-500/40 shadow-md flex items-center gap-1 select-none z-10">
                           <span>km</span>
                           <span>{Number(m.km_no_trajeto).toFixed(1)}</span>
                         </div>
+                      ) : etapaMidia ? (
+                        <div className="absolute bottom-1.5 left-1.5 bg-slate-900/90 text-purple-300 text-[9px] font-bold px-1.5 py-0.5 rounded backdrop-blur-md border border-purple-500/40 shadow-md flex items-center gap-1 select-none z-10">
+                          <span>📍</span>
+                          <span>Dia {etapaMidia.numero_dia}</span>
+                        </div>
                       ) : (
-                        <div className="absolute bottom-1.5 left-1.5 bg-slate-900/90 text-sky-400 text-[9px] font-bold px-1.5 py-0.5 rounded backdrop-blur-md border border-sky-500/40 shadow-md flex items-center gap-1 select-none">
+                        <div className="absolute bottom-1.5 left-1.5 bg-slate-900/90 text-sky-400 text-[9px] font-bold px-1.5 py-0.5 rounded backdrop-blur-md border border-sky-500/40 shadow-md flex items-center gap-1 select-none z-10">
                           <span>📍</span>
                           <span>Pré-viagem</span>
                         </div>
                       )}
 
+                      {/* Botão de Foco no Mapa no Canto Inferior Direito */}
+                      {hasCoords && onFocusOnMap && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onFocusOnMap(m);
+                          }}
+                          className="absolute bottom-1.5 right-8 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-80 group-hover:opacity-100 shadow-md border border-white/10 z-10"
+                          title="Focar este ponto no mapa com zoom"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-orange-400 group-hover:text-white" />
+                        </button>
+                      )}
+
                       {/* Botão de Download Individual no Canto Inferior Direito */}
                       <button
                         onClick={(ev) => handleDownloadSingle(m, ev)}
-                        className="absolute bottom-1.5 right-1.5 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-0 group-hover:opacity-100 shadow-md border border-white/10"
+                        className="absolute bottom-1.5 right-1.5 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-0 group-hover:opacity-100 shadow-md border border-white/10 z-10"
                         title="Baixar esta foto diretamente em HD"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -590,21 +651,32 @@ export default function SidebarGallery({
                           <span className="text-[9px] font-bold text-orange-400 shrink-0">
                             km {Number(m.km_no_trajeto).toFixed(1)}
                           </span>
+                        ) : etapaMidia ? (
+                          <span className="text-[9px] font-bold text-purple-300 shrink-0">
+                            Dia {etapaMidia.numero_dia}
+                          </span>
                         ) : (
                           <span className="text-[9px] font-bold text-sky-400 shrink-0">
                             Pré-viagem
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                        {m.timestamp_captura
-                          ? new Date(m.timestamp_captura).toLocaleDateString('pt-BR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'Caravaggio'}
+                      <p className="text-[10px] text-slate-400 mt-0.5 truncate flex items-center justify-between">
+                        <span>
+                          {m.timestamp_captura
+                            ? new Date(m.timestamp_captura).toLocaleDateString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'Caravaggio'}
+                        </span>
+                        {hasCoords && (
+                          <span className="text-[9px] text-orange-400/80 flex items-center gap-0.5">
+                            <MapPin className="w-2.5 h-2.5" /> Ver no mapa
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

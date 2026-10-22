@@ -57,6 +57,7 @@ export default function Home() {
   const [hoverCoord, setHoverCoord] = useState<[number, number] | null>(null);
   const [hoveredMidiaId, setHoveredMidiaId] = useState<string | null>(null);
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
+  const [mapFocus, setMapFocus] = useState<{ coord: [number, number]; id?: string; timestamp: number } | null>(null);
 
   // Estados Administrativos
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -312,6 +313,33 @@ export default function Home() {
     setIsAdminDrawerOpen(true); // Reabre a gaveta com a coordenada selecionada
   };
 
+  // Focar mídia no mapa com zoom suave e destaque ao clicar na galeria
+  const handleFocusMidiaOnMap = (m: Midia) => {
+    const lat = Number(m.latitude);
+    const lon = Number(m.longitude);
+    if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
+      if (m.etapa_id) {
+        const etapa = etapas.find((e) => e.id === m.etapa_id);
+        if (etapa && diaSelecionado !== null && diaSelecionado !== etapa.numero_dia) {
+          setDiaSelecionado(etapa.numero_dia);
+        }
+      }
+
+      setMapFocus({
+        coord: [lon, lat],
+        id: m.id,
+        timestamp: Date.now(),
+      });
+
+      setHoveredMidiaId(m.id);
+
+      // Em dispositivos móveis, recolhe a galeria para exibir o mapa em foco
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setIsGalleryOpen(false);
+      }
+    }
+  };
+
   const etapaAtual = etapas.find((e) => e.numero_dia === diaSelecionado);
 
   // Mídias ativas filtradas pelos checks de tipo (Fotos, Vídeos, Drone)
@@ -404,6 +432,8 @@ export default function Home() {
           highlightedMidiaId={hoveredMidiaId}
           mediaFilters={mediaFilters}
           onToggleFilter={handleToggleFilter}
+          focusMidia={mapFocus}
+          pendingPinCoord={pendingPinCoord}
         />
 
         {/* Botão Flutuante de Abrir Galeria (quando a aba lateral estiver fechada) */}
@@ -443,6 +473,7 @@ export default function Home() {
         diaSelecionado={diaSelecionado}
         onSelectDia={(dia) => setDiaSelecionado(dia)}
         onSelectMidia={(m) => setSelectedMidia(m)}
+        onFocusOnMap={handleFocusMidiaOnMap}
         hoveredMidiaId={hoveredMidiaId}
         onHoverMidia={(id) => setHoveredMidiaId(id)}
         config={config}
@@ -485,6 +516,10 @@ export default function Home() {
         onUpdateGlobalOneDrive={handleUpdateGlobalOneDrive}
         onStartMapPinPick={handleStartMapPinPick}
         pendingPinCoord={pendingPinCoord}
+        onSetPendingPin={(coord) => {
+          setPendingPinCoord(coord);
+          setMapFocus({ coord, timestamp: Date.now() });
+        }}
         onResetPendingPin={() => setPendingPinCoord(null)}
         onRefreshData={loadData}
       />

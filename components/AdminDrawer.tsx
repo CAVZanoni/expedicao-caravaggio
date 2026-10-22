@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { supabase, Etapa, ExpedicaoConfig } from '@/lib/supabase';
+import { findBestEtapaForCoord, snapToRouteWithThreshold } from '@/lib/geo';
 import exifr from 'exifr';
 import {
   X,
@@ -15,6 +16,7 @@ import {
   FolderOpen,
   LogOut,
   LogIn,
+  Sparkles,
 } from 'lucide-react';
 
 interface AdminDrawerProps {
@@ -28,6 +30,7 @@ interface AdminDrawerProps {
   onUpdateGlobalOneDrive: (novaUrl: string) => Promise<void>;
   onStartMapPinPick: (tipo: 'foto' | 'video_drone', tempInfo: any) => void;
   pendingPinCoord: [number, number] | null;
+  onSetPendingPin?: (coord: [number, number], altitude?: number, kmNoTrajeto?: number) => void;
   onResetPendingPin: () => void;
   onRefreshData: () => Promise<void>;
 }
@@ -43,6 +46,7 @@ export default function AdminDrawer({
   onUpdateGlobalOneDrive,
   onStartMapPinPick,
   pendingPinCoord,
+  onSetPendingPin,
   onResetPendingPin,
   onRefreshData,
 }: AdminDrawerProps) {
@@ -62,6 +66,7 @@ export default function AdminDrawer({
   const [photoEtapa, setPhotoEtapa] = useState<string>(etapas[0]?.id || '');
   const [photoPrivate, setPhotoPrivate] = useState(false);
   const [photoCoords, setPhotoCoords] = useState<{ lat: number; lon: number; alt?: number } | null>(null);
+  const [gpsStatusInfo, setGpsStatusInfo] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
 
   // Estados de Adicionar Vídeo do Drone
@@ -106,25 +111,42 @@ export default function AdminDrawer({
     setPhotoPreview(URL.createObjectURL(file));
     setPhotoTitulo(file.name.replace(/\.[^/.]+$/, ''));
 
-    // Ler metadados EXIF via exifr
+    // Ler metadados EXIF/GPS via exifr
     try {
       const exif = await exifr.parse(file, {
         gps: true,
         pick: ['latitude', 'longitude', 'altitude', 'DateTimeOriginal'],
       });
 
-      if (exif && exif.latitude && exif.longitude) {
-        setPhotoCoords({
-          lat: exif.latitude,
-          lon: exif.longitude,
-          alt: exif.altitude || undefined,
-        });
+      if (exif && typeof exif.latitude === 'number' && typeof exif.longitude === 'number') {
+        const lat = Number(exif.latitude);
+        const lon = Number(exif.longitude);
+        const alt = exif.altitude ? Number(exif.altitude) : undefined;
+
+        setPhotoCoords({ lat, lon, alt });
+
+        // Identificar automaticamente a melhor Etapa baseada na coordenada
+        const bestMatch = findBestEtapaForCoord([lon, lat], etapas);
+        if (bestMatch) {
+          setPhotoEtapa(bestMatch.etapaId);
+          setGpsStatusInfo(`Dia ${bestMatch.numeroDia} (km ${bestMatch.snappedPoint.kmNoTrajeto ?? 0})`);
+          if (onSetPendingPin) {
+            onSetPendingPin([lon, lat], alt, bestMatch.snappedPoint.kmNoTrajeto ?? undefined);
+          }
+        } else {
+          setGpsStatusInfo('Coordenada lida (fora das rotas oficiais de pedal)');
+          if (onSetPendingPin) {
+            onSetPendingPin([lon, lat], alt);
+          }
+        }
       } else {
         setPhotoCoords(null);
+        setGpsStatusInfo(null);
       }
     } catch (err) {
       console.log('Sem EXIF ou falha na leitura', err);
       setPhotoCoords(null);
+      setGpsStatusInfo(null);
     }
   };
 
@@ -162,6 +184,17 @@ export default function AdminDrawer({
 
       const publicUrl = urlData.publicUrl;
 
+      // Calcular o km_no_trajeto se estiver associado a uma etapa com rota
+      let calculatedKm: number | null = null;
+      if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && photoEtapa) {
+        const etapaObj = etapas.find((e) => e.id === photoEtapa);
+        const coords = etapaObj?.geojson_rota?.geometry?.coordinates;
+        if (coords && coords.length > 1) {
+          const snapped = snapToRouteWithThreshold([effectivePhotoLon, effectivePhotoLat], coords, 500);
+          calculatedKm = snapped.kmNoTrajeto;
+        }
+      }
+
       // 2. Inserir no banco de dados na tabela public.midias
       const { error: dbErr } = await supabase.from('midias').insert({
         etapa_id: photoEtapa || null,
@@ -174,6 +207,7 @@ export default function AdminDrawer({
         latitude: effectivePhotoLat,
         longitude: effectivePhotoLon,
         altitude: photoCoords?.alt || null,
+        km_no_trajeto: calculatedKm,
         is_private: photoPrivate,
         posicao: `POINT(${effectivePhotoLon} ${effectivePhotoLat})`,
       });
@@ -184,6 +218,7 @@ export default function AdminDrawer({
       setSelectedFile(null);
       setPhotoPreview(null);
       setPhotoCoords(null);
+      setGpsStatusInfo(null);
       onResetPendingPin();
       await onRefreshData();
       onClose();
@@ -422,19 +457,29 @@ export default function AdminDrawer({
                     </select>
                   </div>
 
-                  {/* Status das Coordenadas */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  {/* Status das Coordenadas / Georreferenciamento Automático */}
+                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Coordenadas:</span>
+                      <span className="text-slate-400">Coordenadas GPS:</span>
                       {effectivePhotoLat ? (
-                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1 font-mono text-[11px]">
                           <Check className="w-3.5 h-3.5" />
                           {effectivePhotoLat.toFixed(5)}, {effectivePhotoLon?.toFixed(5)}
                         </span>
                       ) : (
-                        <span className="text-amber-400 font-medium">Não detectada</span>
+                        <span className="text-amber-400 font-medium text-[11px]">Não detectada no arquivo</span>
                       )}
                     </div>
+
+                    {gpsStatusInfo && (
+                      <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-200 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <div>
+                          <strong>Georreferência Automática:</strong> {gpsStatusInfo}.
+                          <div className="text-[10px] text-emerald-300/80">Marcador posicionado em foco no mapa.</div>
+                        </div>
+                      </div>
+                    )}
 
                     <button
                       type="button"
@@ -442,7 +487,7 @@ export default function AdminDrawer({
                       className="w-full py-1.5 rounded-lg border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-xs font-medium transition flex items-center justify-center gap-1.5"
                     >
                       <MapPin className="w-3.5 h-3.5" />
-                      {effectivePhotoLat ? 'Alterar Local no Mapa' : 'Marcar Local no Mapa (Clique na Rota)'}
+                      {effectivePhotoLat ? 'Ajustar Ponto Clicando na Rota do Mapa' : 'Marcar Local no Mapa (Clique na Rota)'}
                     </button>
                   </div>
 

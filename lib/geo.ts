@@ -194,3 +194,45 @@ export function calculateKmAlongRoute(
 ): number {
   return snapToRoute(point, routeCoords).kmNoTrajeto ?? 0;
 }
+
+export interface EtapaMatchResult {
+  etapaId: string;
+  numeroDia: number;
+  snappedPoint: SnappedPoint;
+  distanceFromRouteMeters: number;
+}
+
+/**
+ * Encontra a etapa mais compatível com uma determinada coordenada [lon, lat],
+ * calculando a menor distância até as rotas de todas as etapas disponíveis.
+ */
+export function findBestEtapaForCoord(
+  point: [number, number],
+  etapas: { id: string; numero_dia: number; geojson_rota?: any }[],
+  maxDistanceMeters: number = 25000 // 25 km de raio de tolerância para identificar etapa
+): EtapaMatchResult | null {
+  let bestMatch: EtapaMatchResult | null = null;
+  let minDistance = Infinity;
+
+  for (const etapa of etapas) {
+    const coords = etapa.geojson_rota?.geometry?.coordinates;
+    if (!coords || !Array.isArray(coords) || coords.length === 0) continue;
+
+    const snapped = snapToRoute(point, coords);
+    if (snapped.distanceFromRouteMeters < minDistance) {
+      minDistance = snapped.distanceFromRouteMeters;
+      bestMatch = {
+        etapaId: etapa.id,
+        numeroDia: etapa.numero_dia,
+        snappedPoint: snapped,
+        distanceFromRouteMeters: snapped.distanceFromRouteMeters,
+      };
+    }
+  }
+
+  if (bestMatch && bestMatch.distanceFromRouteMeters <= maxDistanceMeters) {
+    return bestMatch;
+  }
+
+  return null;
+}

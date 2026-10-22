@@ -40,6 +40,8 @@ interface MapProps {
   highlightedMidiaId?: string | null;
   mediaFilters?: MediaFilters;
   onToggleFilter?: (tipo: keyof MediaFilters) => void;
+  focusMidia?: { coord: [number, number]; id?: string; timestamp: number } | null;
+  pendingPinCoord?: [number, number] | null;
 }
 
 interface MidiaCluster {
@@ -62,11 +64,14 @@ export default function Map({
   highlightedMidiaId,
   mediaFilters,
   onToggleFilter,
+  focusMidia,
+  pendingPinCoord,
 }: MapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const hoverMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const pendingMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   // ID do cluster que está expandido em leque (Spiderfier)
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
@@ -227,6 +232,61 @@ export default function Map({
     if (!map) return;
     map.getCanvas().style.cursor = isPickingPin ? 'crosshair' : '';
   }, [isPickingPin]);
+
+  // Efeito de Foco Dinâmico (Zoom cinematográfico flyTo no mapa ao clicar na galeria)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusMidia) return;
+
+    map.flyTo({
+      center: focusMidia.coord,
+      zoom: 15.5,
+      pitch: 45,
+      duration: 1200,
+      essential: true,
+    });
+  }, [focusMidia]);
+
+  // Marcador Temporário do Upload (pendingPinCoord)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (pendingMarkerRef.current) {
+      pendingMarkerRef.current.remove();
+      pendingMarkerRef.current = null;
+    }
+
+    if (pendingPinCoord) {
+      const el = document.createElement('div');
+      el.className = 'flex flex-col items-center justify-center pointer-events-none z-30 animate-bounce';
+      el.innerHTML = `
+        <div class="relative flex items-center justify-center">
+          <div class="absolute w-8 h-8 rounded-full bg-orange-500 opacity-75 animate-ping"></div>
+          <div class="w-7 h-7 rounded-full bg-orange-600 border-2 border-white shadow-2xl flex items-center justify-center text-white text-xs font-bold">
+            📍
+          </div>
+        </div>
+        <div class="mt-1 bg-slate-900/95 text-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-500 shadow-xl backdrop-blur-md">
+          Novo Ponto
+        </div>
+      `;
+
+      pendingMarkerRef.current = new maplibregl.Marker({
+        element: el,
+        anchor: 'bottom',
+      })
+        .setLngLat(pendingPinCoord)
+        .addTo(map);
+
+      map.flyTo({
+        center: pendingPinCoord,
+        zoom: 15,
+        duration: 1000,
+        essential: true,
+      });
+    }
+  }, [pendingPinCoord]);
 
   // Renderizar Rotas GPX (Trajetos) com suporte a cores personalizadas por dia
   useEffect(() => {
