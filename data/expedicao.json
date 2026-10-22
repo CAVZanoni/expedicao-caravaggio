@@ -1,6 +1,6 @@
 {
   "titulo": "Expedição Cânions & Caminho de Caravaggio",
-  "total_dias": 7,
+  "total_dias": 8,
   "distancia_total_km": 491.86,
   "ganho_elevacao_total_m": 1879,
   "data_inicio": "2026-10-09",
@@ -33821,7 +33821,7 @@
       }
     },
     {
-      "numero_dia": 5,
+      "numero_dia": 6,
       "data": "2026-10-14",
       "titulo": "Etapa 5 - Campos de Cima da Serra (São Francisco de Paula)",
       "cidade_origem": "Cambará do Sul",
@@ -42403,7 +42403,7 @@
       }
     },
     {
-      "numero_dia": 6,
+      "numero_dia": 7,
       "data": "2026-10-15",
       "titulo": "Etapa 6 - Rumo à Serra Gaúcha (Gramado)",
       "cidade_origem": "São Francisco de Paula",
@@ -50829,7 +50829,7 @@
       }
     },
     {
-      "numero_dia": 7,
+      "numero_dia": 8,
       "data": "2026-10-16",
       "titulo": "Etapa 7 - Caminho de Caravaggio (Nova Petrópolis e Farroupilha)",
       "cidade_origem": "Gramado",

@@ -295,7 +295,7 @@ export default function SidebarGallery({
               <p className="text-xs text-slate-400 truncate max-w-[220px]">
                 {escopo === 'etapa' && diaSelecionado && etapaAtual
                   ? `Dia ${diaSelecionado} • ${etapaAtual.titulo}`
-                  : 'Toda a Expedição (7 Dias)'}
+                  : 'Toda a Expedição'}
               </p>
             </div>
           </div>
