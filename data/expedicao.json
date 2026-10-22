@@ -33821,9 +33821,39 @@
       }
     },
     {
+      "numero_dia": 5,
+      "data": "2026-10-13",
+      "titulo": "Etapa 5 - Turvo a Cambará do Sul",
+      "cidade_origem": "Turvo",
+      "cidade_destino": "Cambará do Sul",
+      "distancia_km": 0.0,
+      "altimetria_ganho": 0,
+      "altimetria_perda": 0,
+      "alt_min": 0,
+      "alt_max": 0,
+      "duracao_segundos": 0,
+      "cor_trajeto": "#a855f7",
+      "geojson_rota": {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": []
+        },
+        "properties": {}
+      },
+      "perfil_altimetria": [],
+      "bounds": {
+        "centro": [
+          -29.2,
+          -50.1
+        ]
+      },
+      "id": "e5e5e5e5-1310-4000-8000-000000000005"
+    },
+    {
       "numero_dia": 6,
       "data": "2026-10-14",
-      "titulo": "Etapa 5 - Campos de Cima da Serra (São Francisco de Paula)",
+      "titulo": "Etapa 6 - Campos de Cima da Serra (São Francisco de Paula)",
       "cidade_origem": "Cambará do Sul",
       "cidade_destino": "São Francisco de Paula",
       "arquivo_gpx": "activity_24723658278.gpx",
@@ -42405,7 +42435,7 @@
     {
       "numero_dia": 7,
       "data": "2026-10-15",
-      "titulo": "Etapa 6 - Rumo à Serra Gaúcha (Gramado)",
+      "titulo": "Etapa 7 - Rumo à Serra Gaúcha (Gramado)",
       "cidade_origem": "São Francisco de Paula",
       "cidade_destino": "Gramado",
       "arquivo_gpx": "activity_24735221335.gpx",
@@ -50831,7 +50861,7 @@
     {
       "numero_dia": 8,
       "data": "2026-10-16",
-      "titulo": "Etapa 7 - Caminho de Caravaggio (Nova Petrópolis e Farroupilha)",
+      "titulo": "Etapa 8 - Caminho de Caravaggio (Nova Petrópolis e Farroupilha)",
       "cidade_origem": "Gramado",
       "cidade_destino": "Nova Petrópolis / Caravaggio",
       "arquivo_gpx": "activity_24750527261.gpx",

@@ -100,7 +100,7 @@ export default function Header({
             <p className="text-xs text-slate-400">
               {diaSelecionado
                 ? `Dia ${diaSelecionado} • ${etapaAtual?.titulo} (${etapaAtual?.data ? new Date(etapaAtual.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''})`
-                : 'Expedição Completa • 6 Tracks Pedalados nos Cânions e Serra Gaúcha'}
+                : 'Expedição Completa • 8 Dias nos Cânions e Serra Gaúcha'}
             </p>
           </div>
         </div>
@@ -228,7 +228,7 @@ export default function Header({
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
             >
-              Toda a Expedição (6 Tracks)
+              Toda a Expedição (8 Dias)
             </button>
 
             {etapas.map((e) => {
