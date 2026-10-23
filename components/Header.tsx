@@ -91,26 +91,26 @@ export default function Header({
   return (
     <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 transition-all">
       {/* Barra Superior Principal */}
-      <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
         {/* Logotipo e Título */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20 text-white font-bold">
-            <Mountain className="w-5 h-5" />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20 text-white font-bold shrink-0">
+            <Mountain className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base md:text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent truncate">
               {config?.titulo || 'Expedição Cânions & Caminho de Caravaggio'}
             </h1>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-400 truncate">
               {diaSelecionado
-                ? `Dia ${diaSelecionado} • ${etapaAtual?.titulo} (${etapaAtual?.data ? new Date(etapaAtual.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''})`
-                : 'Expedição Completa • 8 Dias nos Cânions e Serra Gaúcha'}
+                ? `Dia ${diaSelecionado} • ${etapaAtual?.titulo || ''} (${etapaAtual?.data ? new Date(etapaAtual.data + 'T00:00:00').toLocaleDateString('pt-BR') : ''})`
+                : `${etapas.length > 0 ? etapas.length : 9} Dias nos Cânions e Serra Gaúcha • ${totalDistancia.toFixed(1)} km • +${totalAltimetria}m`}
             </p>
           </div>
         </div>
 
-        {/* Métricas Rápidas (Estilo Strava) */}
-        <div className="flex items-center gap-6 bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-2">
+        {/* Métricas Rápidas (Estilo Strava) - Visível em telas médias e grandes */}
+        <div className="hidden lg:flex items-center gap-6 bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-2 shrink-0">
           <div className="flex items-center gap-2">
             <Navigation className="w-4 h-4 text-orange-400" />
             <div>
@@ -129,14 +129,14 @@ export default function Header({
         </div>
 
         {/* Controles de Mapa, OneDrive e Acesso Admin */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Link da Pasta OneDrive */}
           {config?.onedrive_pasta_url && (
             <a
               href={config.onedrive_pasta_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs"
+              className="p-1.5 sm:p-2 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs shrink-0"
               title="Abrir pasta de vídeos e arquivos no OneDrive"
             >
               <FolderOpen className="w-4 h-4 text-sky-400" />
@@ -145,10 +145,10 @@ export default function Header({
           )}
 
           {/* Seletor de Camadas do Mapa */}
-          <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-lg p-0.5">
+          <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-lg p-0.5 shrink-0">
             <button
               onClick={() => onChangeTipoMapa('satellite')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+              className={`px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md transition ${
                 tipoMapa === 'satellite'
                   ? 'bg-orange-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -158,7 +158,7 @@ export default function Header({
             </button>
             <button
               onClick={() => onChangeTipoMapa('streets')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+              className={`px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md transition ${
                 tipoMapa === 'streets'
                   ? 'bg-orange-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
@@ -168,11 +168,11 @@ export default function Header({
             </button>
           </div>
 
-          {/* Botão de Galeria Lateral (Ocultável) */}
+          {/* Botão de Galeria Lateral (no mobile fica oculto pois já tem o botão flutuante sobre o mapa) */}
           {onToggleGallery && (
             <button
               onClick={onToggleGallery}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition border shrink-0 ${
                 isGalleryOpen
                   ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-600/30'
                   : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white'
@@ -197,7 +197,7 @@ export default function Header({
           {isAdmin && onToggleEditMode && (
             <button
               onClick={onToggleEditMode}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition border shrink-0 ${
                 isEditMode
                   ? 'bg-amber-500 border-amber-400 text-slate-950 font-bold shadow-md shadow-amber-500/20 animate-pulse'
                   : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
@@ -211,12 +211,14 @@ export default function Header({
               {isEditMode ? (
                 <>
                   <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Pins Destravados</span>
+                  <span className="hidden xl:inline">Pins Destravados</span>
+                  <span className="hidden sm:inline xl:hidden">Destravado</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Pins Travados</span>
+                  <span className="hidden xl:inline">Pins Travados</span>
+                  <span className="hidden sm:inline xl:hidden">Travado</span>
                 </>
               )}
             </button>
@@ -225,7 +227,7 @@ export default function Header({
           {/* Botão de Admin */}
           <button
             onClick={onOpenAdminDrawer}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition border shrink-0 ${
               isAdmin
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
