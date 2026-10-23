@@ -64,6 +64,7 @@ export default function Home() {
   const [isAdminDrawerOpen, setIsAdminDrawerOpen] = useState<boolean>(false);
   const [isPickingPin, setIsPickingPin] = useState<boolean>(false);
   const [pendingPinCoord, setPendingPinCoord] = useState<[number, number] | null>(null);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   // Carregar dados iniciais
   const loadData = async () => {
@@ -414,6 +415,8 @@ export default function Home() {
         onToggleGallery={() => setIsGalleryOpen((prev) => !prev)}
         isGalleryOpen={isGalleryOpen}
         totalMidias={midiasFiltradasPorTipo.length}
+        isEditMode={isEditMode}
+        onToggleEditMode={() => setIsEditMode((prev) => !prev)}
       />
 
       {/* Área Central: Mapa com Trajeto e Marcadores */}
@@ -434,6 +437,8 @@ export default function Home() {
           onToggleFilter={handleToggleFilter}
           focusMidia={mapFocus}
           pendingPinCoord={pendingPinCoord}
+          isEditMode={isEditMode}
+          onToggleEditMode={() => setIsEditMode((prev) => !prev)}
         />
 
         {/* Botão Flutuante de Abrir Galeria (quando a aba lateral estiver fechada) */}

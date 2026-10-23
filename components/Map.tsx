@@ -42,6 +42,8 @@ interface MapProps {
   onToggleFilter?: (tipo: keyof MediaFilters) => void;
   focusMidia?: { coord: [number, number]; id?: string; timestamp: number } | null;
   pendingPinCoord?: [number, number] | null;
+  isEditMode?: boolean;
+  onToggleEditMode?: () => void;
 }
 
 interface MidiaCluster {
@@ -66,6 +68,8 @@ export default function Map({
   onToggleFilter,
   focusMidia,
   pendingPinCoord,
+  isEditMode: isEditModeProp,
+  onToggleEditMode,
 }: MapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -77,7 +81,8 @@ export default function Map({
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
 
   // Modo de Edição / Reposicionamento de Pins (Admin)
-  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [isEditModeInternal, setIsEditModeInternal] = useState<boolean>(false);
+  const isEditMode = isEditModeProp !== undefined ? isEditModeProp : isEditModeInternal;
 
   // Alteração pendente de reposicionamento (aguardando confirmação do admin)
   const [pendingMove, setPendingMove] = useState<{
@@ -866,42 +871,6 @@ export default function Map({
             <Camera className="w-4 h-4 text-orange-400 shrink-0" />
             <span>Fotos</span>
           </button>
-
-          {/* 4. Trava de Edição de Pins (Exclusivo para Administrador) */}
-          {isAdmin && (
-            <div className="pl-1 sm:pl-1.5 border-l border-slate-800 shrink-0 flex items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditMode((prev) => !prev);
-                  if (pendingMove) handleCancelMove();
-                }}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition active:scale-95 shrink-0 border ${
-                  isEditMode
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20 animate-pulse'
-                    : 'text-slate-400 hover:text-slate-200 border-slate-800 hover:bg-slate-900/60'
-                }`}
-                title={
-                  isEditMode
-                    ? 'Clique para TRAVAR os marcadores e evitar arrastes acidentais'
-                    : 'Clique para DESTRAVAR e permitir reposicionar marcadores na rota'
-                }
-              >
-                {isEditMode ? (
-                  <>
-                    <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
-                    <span>Edição Ativa</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="hidden sm:inline">Pins Travados</span>
-                    <span className="sm:hidden">Travado</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
         </div>
       )}
 

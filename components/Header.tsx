@@ -29,6 +29,8 @@ interface HeaderProps {
   onToggleGallery?: () => void;
   isGalleryOpen?: boolean;
   totalMidias?: number;
+  isEditMode?: boolean;
+  onToggleEditMode?: () => void;
 }
 
 const PALETA_CORES = [
@@ -60,6 +62,8 @@ export default function Header({
   onToggleGallery,
   isGalleryOpen,
   totalMidias,
+  isEditMode,
+  onToggleEditMode,
 }: HeaderProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const etapaAtual = etapas.find((e) => e.numero_dia === diaSelecionado);
@@ -185,6 +189,35 @@ export default function Header({
                 >
                   {totalMidias}
                 </span>
+              )}
+            </button>
+          )}
+
+          {/* Botão de Trava de Edição de Pins (ao lado do Admin) */}
+          {isAdmin && onToggleEditMode && (
+            <button
+              onClick={onToggleEditMode}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                isEditMode
+                  ? 'bg-amber-500 border-amber-400 text-slate-950 font-bold shadow-md shadow-amber-500/20 animate-pulse'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+              title={
+                isEditMode
+                  ? 'Pins destravados: clique para travar a movimentação dos marcadores'
+                  : 'Pins travados: clique para destravar e reposicionar marcadores na rota'
+              }
+            >
+              {isEditMode ? (
+                <>
+                  <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Pins Destravados</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Pins Travados</span>
+                </>
               )}
             </button>
           )}
