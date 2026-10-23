@@ -683,8 +683,15 @@ export default function AdminDrawer({
                     </div>
 
                     {!photoCoords && selectedFile && !pendingPinCoord && (
-                      <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200">
-                        💡 Foto sem dados de GPS no arquivo. Usando a posição do Dia {currentEtapa?.numero_dia}. Caso queira colocar em um ponto específico, toque no botão abaixo e toque na rota no mapa.
+                      <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200 space-y-1.5">
+                        <div>
+                          💡 <strong>Foto sem dados de GPS no arquivo:</strong> No celular, o <em>Google Fotos / Coleções</em> remove a localização por privacidade ao selecionar a imagem.
+                        </div>
+                        <div className="text-[10px] text-amber-300/80">
+                          👉 <strong>Para ler o GPS automático:</strong> No seletor do Android, selecione a foto pela <strong>Galeria da Samsung</strong> ou <strong>Meus Arquivos (DCIM &gt; Camera)</strong>.
+                          <br />
+                          👉 Ou use o ponto padrão do Dia {currentEtapa?.numero_dia} / toque no botão abaixo para marcar o ponto exato na rota.
+                        </div>
                       </div>
                     )}
 
