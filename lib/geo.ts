@@ -236,3 +236,185 @@ export function findBestEtapaForCoord(
 
   return null;
 }
+
+/**
+ * Extrai um objeto Date a partir de metadados EXIF, nome do arquivo ou timestamp lastModified.
+ */
+export function extractDateTimeFromMetadata(
+  exifDate?: any,
+  fileName?: string,
+  lastModified?: number
+): { date: Date; dateStr: string; timeStr: string; source: 'exif' | 'filename' | 'last_modified' } | null {
+  // 1. Tentar via EXIF DateTimeOriginal / CreateDate
+  if (exifDate instanceof Date && !isNaN(exifDate.getTime())) {
+    const iso = exifDate.toISOString();
+    return {
+      date: exifDate,
+      dateStr: iso.split('T')[0],
+      timeStr: iso.split('T')[1].substring(0, 8),
+      source: 'exif',
+    };
+  }
+
+  if (typeof exifDate === 'string') {
+    // Formato EXIF típico "YYYY:MM:DD HH:MM:SS"
+    const m = exifDate.match(/(\d{4})[-:.](\d{2})[-:.](\d{2})[ T](\d{2})[-:.](\d{2})[-:.](\d{2})/);
+    if (m) {
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]));
+      if (!isNaN(d.getTime())) {
+        return {
+          date: d,
+          dateStr: `${m[1]}-${m[2]}-${m[3]}`,
+          timeStr: `${m[4]}:${m[5]}:${m[6]}`,
+          source: 'exif',
+        };
+      }
+    }
+  }
+
+  // 2. Tentar via padrão no nome do arquivo (ex: 20261016_174146.jpg ou IMG-20261016-WA0001.jpg)
+  if (fileName) {
+    const mTime = fileName.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+    if (mTime) {
+      const d = new Date(
+        Number(mTime[1]),
+        Number(mTime[2]) - 1,
+        Number(mTime[3]),
+        Number(mTime[4]),
+        Number(mTime[5]),
+        Number(mTime[6])
+      );
+      if (!isNaN(d.getTime())) {
+        return {
+          date: d,
+          dateStr: `${mTime[1]}-${mTime[2]}-${mTime[3]}`,
+          timeStr: `${mTime[4]}:${mTime[5]}:${mTime[6]}`,
+          source: 'filename',
+        };
+      }
+    }
+
+    const mDateOnly = fileName.match(/(\d{4})(\d{2})(\d{2})/);
+    if (mDateOnly) {
+      const d = new Date(Number(mDateOnly[1]), Number(mDateOnly[2]) - 1, Number(mDateOnly[3]), 12, 0, 0);
+      if (!isNaN(d.getTime())) {
+        return {
+          date: d,
+          dateStr: `${mDateOnly[1]}-${mDateOnly[2]}-${mDateOnly[3]}`,
+          timeStr: '12:00:00',
+          source: 'filename',
+        };
+      }
+    }
+  }
+
+  // 3. Fallback para lastModified do arquivo
+  if (lastModified && typeof lastModified === 'number' && !isNaN(lastModified)) {
+    const d = new Date(lastModified);
+    if (!isNaN(d.getTime())) {
+      const iso = d.toISOString();
+      return {
+        date: d,
+        dateStr: iso.split('T')[0],
+        timeStr: iso.split('T')[1].substring(0, 8),
+        source: 'last_modified',
+      };
+    }
+  }
+
+  return null;
+}
+
+export interface TimeMatchResult {
+  etapaId: string;
+  numeroDia: number;
+  coord: [number, number];
+  altitude?: number;
+  kmNoTrajeto: number;
+  timeDiffMinutes: number;
+  matchType: 'exact_time' | 'stage_start' | 'stage_end' | 'stage_fallback';
+}
+
+/**
+ * Correlaciona a data e horário da foto com o trajeto GPX da etapa correspondente.
+ */
+export function findBestPointByDateTime(
+  photoDate: Date,
+  dateStr: string,
+  etapas: {
+    id: string;
+    numero_dia: number;
+    data?: string;
+    geojson_rota?: any;
+    geojson?: any;
+    perfil_altimetria?: { km: number; altitude: number; lat: number; lon: number; time?: string }[];
+  }[]
+): TimeMatchResult | null {
+  // 1. Encontrar etapa daquela data
+  const etapa = etapas.find((e) => e.data === dateStr);
+  if (!etapa) return null;
+
+  const points = etapa.perfil_altimetria || [];
+  const coords = etapa.geojson_rota?.geometry?.coordinates || etapa.geojson?.geometry?.coordinates || [];
+
+  if (points.length === 0 && coords.length === 0) return null;
+
+  // Filtrar pontos que possuem time
+  const timedPoints = points.filter((p) => Boolean(p.time));
+
+  if (timedPoints.length > 0) {
+    const photoMs = photoDate.getTime();
+    let bestPt = timedPoints[0];
+    let minDiffMs = Infinity;
+
+    for (const pt of timedPoints) {
+      if (!pt.time) continue;
+      const ptMs = new Date(pt.time).getTime();
+      const diff = Math.abs(photoMs - ptMs);
+      if (diff < minDiffMs) {
+        minDiffMs = diff;
+        bestPt = pt;
+      }
+    }
+
+    const firstPt = timedPoints[0];
+    const lastPt = timedPoints[timedPoints.length - 1];
+    const firstMs = new Date(firstPt.time!).getTime();
+    const lastMs = new Date(lastPt.time!).getTime();
+
+    let matchType: TimeMatchResult['matchType'] = 'exact_time';
+    if (photoMs < firstMs) {
+      bestPt = firstPt;
+      matchType = 'stage_start';
+    } else if (photoMs > lastMs) {
+      bestPt = lastPt;
+      matchType = 'stage_end';
+    }
+
+    return {
+      etapaId: etapa.id,
+      numeroDia: etapa.numero_dia,
+      coord: [bestPt.lon, bestPt.lat],
+      altitude: bestPt.altitude,
+      kmNoTrajeto: bestPt.km,
+      timeDiffMinutes: Math.round(minDiffMs / (60 * 1000)),
+      matchType,
+    };
+  }
+
+  // Fallback se não houver pontos com time: usa o ponto final ou meio da etapa
+  if (coords.length > 0) {
+    const pt = coords[coords.length - 1];
+    return {
+      etapaId: etapa.id,
+      numeroDia: etapa.numero_dia,
+      coord: [pt[0], pt[1]],
+      altitude: pt[2] || undefined,
+      kmNoTrajeto: 0,
+      timeDiffMinutes: 0,
+      matchType: 'stage_fallback',
+    };
+  }
+
+  return null;
+}

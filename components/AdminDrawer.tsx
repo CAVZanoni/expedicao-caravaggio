@@ -2,7 +2,12 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, Etapa, ExpedicaoConfig, Midia } from '@/lib/supabase';
-import { findBestEtapaForCoord, snapToRouteWithThreshold } from '@/lib/geo';
+import {
+  findBestEtapaForCoord,
+  snapToRouteWithThreshold,
+  extractDateTimeFromMetadata,
+  findBestPointByDateTime,
+} from '@/lib/geo';
 import exifr from 'exifr';
 import {
   X,
@@ -19,6 +24,11 @@ import {
   Sparkles,
   Shield,
   Loader2,
+  Image as ImageIcon,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from 'lucide-react';
 
 interface AdminDrawerProps {
@@ -126,7 +136,21 @@ export default function AdminDrawer({
   const [gpsStatusInfo, setGpsStatusInfo] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<{
+    fileName: string;
+    fileSizeFormatted: string;
+    cameraModel?: string;
+    detectedDateTime?: string;
+    dateSource?: string;
+    hasNativeGps: boolean;
+    nativeCoords?: [number, number];
+    positioningMethod: 'gps_nativo' | 'tempo_rota' | 'etapa_data' | 'etapa_padrao' | 'pin_manual';
+    etapaIdentificada?: string;
+    kmCalculado?: number | null;
+  } | null>(null);
+  const [showDiagnosticDetails, setShowDiagnosticDetails] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const docInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Estados de Adicionar Vídeo do Drone
   const [ytUrl, setYtUrl] = useState('');
@@ -176,6 +200,7 @@ export default function AdminDrawer({
   // Processamento e Leitura EXIF da Foto Selecionada com alta compatibilidade mobile
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhotoError(null);
+    setDiagnostic(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -201,12 +226,20 @@ export default function AdminDrawer({
     } else {
       try {
         setPhotoPreview(URL.createObjectURL(file));
-      } catch (e) {
-        console.warn('Não foi possível gerar preview do blob:', e);
+      } catch (errPreview) {
+        console.warn('Não foi possível gerar preview do blob:', errPreview);
       }
     }
 
-    setPhotoTitulo(file.name.replace(/\.[^/.]+$/, ''));
+    // Sugestão de título mais limpo
+    const cleanTitle = file.name
+      .replace(/\.[^/.]+$/, '')
+      .replace(/^IMG[-_]/i, '')
+      .replace(/^[\d-_]+/, (m) => (m.length > 8 ? '' : m))
+      .trim();
+    setPhotoTitulo(cleanTitle || file.name.replace(/\.[^/.]+$/, ''));
+
+    const sizeFormatted = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
 
     // Ler metadados EXIF/GPS via exifr com suporte a ArrayBuffer completo
     try {
@@ -231,7 +264,7 @@ export default function AdminDrawer({
         lon = Number(gpsData.longitude);
       }
 
-      // 2. Ler metadados complementares (altitude, etc) sem o filtro pick restritivo
+      // 2. Ler metadados complementares (altitude, data, modelo da câmera)
       const fullExif = await exifr.parse(inputSource, {
         gps: true,
         tiff: true,
@@ -248,6 +281,16 @@ export default function AdminDrawer({
         }
       }
 
+      const camera = fullExif?.Model ? `${fullExif.Make || ''} ${fullExif.Model}`.trim() : undefined;
+
+      // 3. Extrair Data e Hora da Foto (EXIF, Nome ou lastModified)
+      const timeInfo = extractDateTimeFromMetadata(
+        fullExif?.DateTimeOriginal || fullExif?.CreateDate || fullExif?.ModifyDate,
+        file.name,
+        file.lastModified
+      );
+
+      // CASO 1: GPS Nativo presente no arquivo (Arquivo Bruto ou PC)
       if (lat !== undefined && lon !== undefined) {
         setPhotoCoords({ lat, lon, alt });
 
@@ -255,20 +298,84 @@ export default function AdminDrawer({
         const bestMatch = findBestEtapaForCoord([lon, lat], etapas);
         if (bestMatch) {
           setPhotoEtapa(bestMatch.etapaId);
-          setGpsStatusInfo(`Dia ${bestMatch.numeroDia} (km ${bestMatch.snappedPoint.kmNoTrajeto ?? 0})`);
+          setGpsStatusInfo(`Dia ${bestMatch.numeroDia} (km ${bestMatch.snappedPoint.kmNoTrajeto ?? 0}) • GPS Nativo`);
           if (onSetPendingPin) {
             onSetPendingPin([lon, lat], alt, bestMatch.snappedPoint.kmNoTrajeto ?? undefined);
           }
         } else {
-          setGpsStatusInfo('Coordenada lida (fora das rotas oficiais de pedal)');
+          setGpsStatusInfo('GPS Nativo lido (fora das rotas oficiais de pedal)');
           if (onSetPendingPin) {
             onSetPendingPin([lon, lat], alt);
           }
         }
-      } else {
-        setPhotoCoords(null);
-        setGpsStatusInfo(null);
+
+        setDiagnostic({
+          fileName: file.name,
+          fileSizeFormatted: sizeFormatted,
+          cameraModel: camera,
+          detectedDateTime: timeInfo ? `${timeInfo.dateStr} às ${timeInfo.timeStr}` : undefined,
+          dateSource: timeInfo?.source === 'exif' ? 'EXIF' : timeInfo?.source === 'filename' ? 'Nome' : 'Arquivo',
+          hasNativeGps: true,
+          nativeCoords: [lat, lon],
+          positioningMethod: 'gps_nativo',
+          etapaIdentificada: bestMatch ? `Dia ${bestMatch.numeroDia}` : undefined,
+          kmCalculado: bestMatch?.snappedPoint.kmNoTrajeto ?? null,
+        });
+        return;
       }
+
+      // CASO 2: GPS suprimido pelo Android Photo Picker, mas Data/Hora identificada
+      if (timeInfo) {
+        const timeMatch = findBestPointByDateTime(timeInfo.date, timeInfo.dateStr, etapas);
+        if (timeMatch) {
+          const matchedLat = timeMatch.coord[1];
+          const matchedLon = timeMatch.coord[0];
+          const matchedAlt = timeMatch.altitude;
+          const matchedKm = timeMatch.kmNoTrajeto;
+
+          setPhotoCoords({ lat: matchedLat, lon: matchedLon, alt: matchedAlt });
+          setPhotoEtapa(timeMatch.etapaId);
+
+          const timeNote =
+            timeMatch.matchType === 'exact_time'
+              ? 'Horário exato na rota'
+              : timeMatch.matchType === 'stage_end'
+              ? 'Chegada da etapa'
+              : timeMatch.matchType === 'stage_start'
+              ? 'Início da etapa'
+              : 'Na rota da etapa';
+
+          setGpsStatusInfo(`Dia ${timeMatch.numeroDia} (km ${matchedKm.toFixed(1)}) • ${timeNote}`);
+
+          if (onSetPendingPin) {
+            onSetPendingPin([matchedLon, matchedLat], matchedAlt, matchedKm);
+          }
+
+          setDiagnostic({
+            fileName: file.name,
+            fileSizeFormatted: sizeFormatted,
+            cameraModel: camera,
+            detectedDateTime: `${timeInfo.dateStr} às ${timeInfo.timeStr}`,
+            dateSource: timeInfo.source === 'exif' ? 'EXIF da Câmera' : timeInfo.source === 'filename' ? 'Nome do Arquivo' : 'Data do Arquivo',
+            hasNativeGps: false,
+            positioningMethod: 'tempo_rota',
+            etapaIdentificada: `Dia ${timeMatch.numeroDia}`,
+            kmCalculado: matchedKm,
+          });
+          return;
+        }
+      }
+
+      // CASO 3: Sem GPS e sem correspondência de data (fallback padrão da etapa)
+      setPhotoCoords(null);
+      setGpsStatusInfo(null);
+      setDiagnostic({
+        fileName: file.name,
+        fileSizeFormatted: sizeFormatted,
+        cameraModel: camera,
+        hasNativeGps: false,
+        positioningMethod: 'etapa_padrao',
+      });
     } catch (err) {
       console.log('Sem EXIF ou falha na leitura', err);
       setPhotoCoords(null);
@@ -626,19 +733,71 @@ export default function AdminDrawer({
                     </div>
                   )}
 
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-0.5">
-                      Arquivo da Foto (Modo Documento / Arquivo)
+                  {/* Seletor com Duplo Modo (Galeria ou Meus Arquivos) */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-200 block">
+                      Selecionar Foto do Aparelho
                     </label>
-                    <p className="text-[11px] text-slate-400 mb-2">
-                      Abre o gerenciador de arquivos do celular (sem compressão ou remoção de GPS pelo seletor de fotos).
-                    </p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Modo 1: Galeria / Fotos (Padrão) */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-3 rounded-xl border border-slate-700 bg-slate-950/80 hover:bg-slate-800 text-left transition flex flex-col gap-1 group active:scale-[0.98]"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-white group-hover:text-orange-400">
+                          <ImageIcon className="w-4 h-4 text-orange-500 shrink-0" />
+                          <span>Galeria / Fotos</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Álbum de fotos normal. Usa data/hora se o celular ocultar o GPS.
+                        </p>
+                      </button>
+
+                      {/* Modo 2: Meus Arquivos / Documento Bruto */}
+                      <button
+                        type="button"
+                        onClick={() => docInputRef.current?.click()}
+                        className="p-3 rounded-xl border border-slate-700 bg-slate-950/80 hover:bg-slate-800 text-left transition flex flex-col gap-1 group active:scale-[0.98]"
+                      >
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-white group-hover:text-sky-400">
+                          <FileText className="w-4 h-4 text-sky-500 shrink-0" />
+                          <span>Meus Arquivos</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          Abre gerenciador de arquivos. Preserva GPS bruto no Android.
+                        </p>
+                      </button>
+                    </div>
+
+                    {/* Inputs de arquivo ocultos disparados pelos botões acima */}
                     <input
                       ref={fileInputRef}
                       type="file"
+                      accept="image/*,.heic,.heif"
                       onChange={handleFileChange}
-                      className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-500 cursor-pointer"
+                      className="hidden"
                     />
+                    <input
+                      ref={docInputRef}
+                      type="file"
+                      accept="application/octet-stream,*/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+
+                    {selectedFile && (
+                      <div className="text-[11px] text-slate-300 flex items-center justify-between px-1 py-1 rounded bg-slate-950/50 border border-slate-800/80">
+                        <span className="truncate max-w-[240px] font-mono text-slate-300 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                          {selectedFile.name}
+                        </span>
+                        <span className="text-slate-500 text-[10px] shrink-0 font-mono">
+                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {photoPreview ? (
@@ -731,6 +890,83 @@ export default function AdminDrawer({
                           <strong>Georreferência:</strong> {gpsStatusInfo}.
                           <div className="text-[10px] text-emerald-300/80">Marcador posicionado em foco no mapa.</div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Painel de Diagnóstico do Arquivo */}
+                    {diagnostic && (
+                      <div className="rounded-xl border border-slate-800 bg-slate-950/70 overflow-hidden text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setShowDiagnosticDetails((prev) => !prev)}
+                          className="w-full p-2.5 flex items-center justify-between text-slate-300 hover:text-white transition"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-200">
+                            <Info className="w-3.5 h-3.5 text-sky-400" />
+                            Diagnóstico dos Metadados
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[10px]">
+                            <span
+                              className={`px-1.5 py-0.5 rounded font-mono ${
+                                diagnostic.hasNativeGps
+                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                  : diagnostic.positioningMethod === 'tempo_rota'
+                                  ? 'bg-sky-950 text-sky-300 border border-sky-800'
+                                  : 'bg-slate-800 text-slate-300'
+                              }`}
+                            >
+                              {diagnostic.hasNativeGps
+                                ? 'GPS Nativo'
+                                : diagnostic.positioningMethod === 'tempo_rota'
+                                ? 'Horário GPX'
+                                : 'Etapa Padrão'}
+                            </span>
+                            {showDiagnosticDetails ? (
+                              <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </div>
+                        </button>
+
+                        {showDiagnosticDetails && (
+                          <div className="p-3 pt-1 border-t border-slate-800/80 space-y-1.5 text-[11px] text-slate-300">
+                            <div className="flex justify-between py-0.5 border-b border-slate-900">
+                              <span className="text-slate-500">Arquivo:</span>
+                              <span className="font-mono text-slate-300 truncate max-w-[200px]">
+                                {diagnostic.fileName}
+                              </span>
+                            </div>
+                            {diagnostic.cameraModel && (
+                              <div className="flex justify-between py-0.5 border-b border-slate-900">
+                                <span className="text-slate-500">Aparelho / Câmera:</span>
+                                <span className="text-slate-200">{diagnostic.cameraModel}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between py-0.5 border-b border-slate-900">
+                              <span className="text-slate-500">Data e Hora:</span>
+                              <span className="text-slate-200 font-mono">
+                                {diagnostic.detectedDateTime || 'Não encontrada'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-0.5 border-b border-slate-900">
+                              <span className="text-slate-500">GPS no Arquivo:</span>
+                              <span className={diagnostic.hasNativeGps ? 'text-emerald-400 font-semibold' : 'text-amber-400'}>
+                                {diagnostic.hasNativeGps ? 'Sim (Coordenadas Reais)' : 'Suprimido pelo celular (Android Photo Picker)'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-0.5">
+                              <span className="text-slate-500">Origem da Posição:</span>
+                              <span className="text-orange-400 font-semibold">
+                                {diagnostic.positioningMethod === 'gps_nativo'
+                                  ? 'GPS da Câmera'
+                                  : diagnostic.positioningMethod === 'tempo_rota'
+                                  ? 'Sincronizado pelo Horário na Rota'
+                                  : 'Ponto Padrão da Etapa'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
