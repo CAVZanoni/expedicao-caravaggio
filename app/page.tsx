@@ -445,11 +445,11 @@ export default function Home() {
         {!isGalleryOpen && (
           <button
             onClick={() => setIsGalleryOpen(true)}
-            className="absolute top-3 sm:top-4 right-14 sm:right-16 z-20 bg-slate-900/90 hover:bg-orange-600 text-white border border-slate-700/80 shadow-2xl px-3 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-2 backdrop-blur-md transition hover:scale-105 active:scale-95"
+            className="absolute top-[112px] right-2.5 sm:top-4 sm:right-16 z-20 bg-slate-900/95 hover:bg-orange-600 text-white border border-slate-700/80 shadow-2xl px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 sm:gap-2 backdrop-blur-md transition hover:scale-105 active:scale-95"
             title="Abrir Galeria de Fotos e Vídeos do trecho"
           >
             <Images className="w-4 h-4 text-orange-400" />
-            <span>Galeria</span>
+            <span className="hidden xs:inline sm:inline">Galeria</span>
             <span className="bg-orange-600 text-white px-1.5 py-0.5 rounded-full text-[10px]">
               {diaSelecionado && etapaAtual
                 ? midiasFiltradasPorTipo.filter((m) => m.etapa_id === etapaAtual.id).length
