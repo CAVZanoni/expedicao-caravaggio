@@ -106,7 +106,11 @@ export default function Home() {
         const localResp = await fetch('/data/expedicao.json');
         if (localResp.ok) {
           const localData = await localResp.json();
-          setEtapas(localData.etapas || []);
+          const normalizedEtapas = (localData.etapas || []).map((e: any) => ({
+            ...e,
+            geojson_rota: e.geojson_rota || e.geojson,
+          }));
+          setEtapas(normalizedEtapas);
         }
       }
 

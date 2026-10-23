@@ -208,14 +208,14 @@ export interface EtapaMatchResult {
  */
 export function findBestEtapaForCoord(
   point: [number, number],
-  etapas: { id: string; numero_dia: number; geojson_rota?: any }[],
+  etapas: { id: string; numero_dia: number; geojson_rota?: any; geojson?: any }[],
   maxDistanceMeters: number = 25000 // 25 km de raio de tolerância para identificar etapa
 ): EtapaMatchResult | null {
   let bestMatch: EtapaMatchResult | null = null;
   let minDistance = Infinity;
 
   for (const etapa of etapas) {
-    const coords = etapa.geojson_rota?.geometry?.coordinates;
+    const coords = etapa.geojson_rota?.geometry?.coordinates || etapa.geojson?.geometry?.coordinates;
     if (!coords || !Array.isArray(coords) || coords.length === 0) continue;
 
     const snapped = snapToRoute(point, coords);

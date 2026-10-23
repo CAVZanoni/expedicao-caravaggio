@@ -271,7 +271,7 @@ export default function AdminDrawer({
 
   const etapaFallbackCoord = useMemo<[number, number] | null>(() => {
     if (!currentEtapa) return null;
-    const coords = currentEtapa.geojson_rota?.geometry?.coordinates;
+    const coords = currentEtapa.geojson_rota?.geometry?.coordinates || (currentEtapa as any).geojson?.geometry?.coordinates;
     if (coords && coords.length > 0) {
       const mid = Math.floor(coords.length / 2);
       return [coords[mid][0], coords[mid][1]];
@@ -337,7 +337,7 @@ export default function AdminDrawer({
         calculatedKm = pendingPinInfo.kmNoTrajeto;
       } else if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && targetEtapaId) {
         const etapaObj = etapas.find((e) => e.id === targetEtapaId);
-        const coords = etapaObj?.geojson_rota?.geometry?.coordinates;
+        const coords = etapaObj?.geojson_rota?.geometry?.coordinates || (etapaObj as any)?.geojson?.geometry?.coordinates;
         if (coords && coords.length > 1) {
           const snapped = snapToRouteWithThreshold([effectivePhotoLon, effectivePhotoLat], coords, 500);
           calculatedKm = snapped.kmNoTrajeto;
