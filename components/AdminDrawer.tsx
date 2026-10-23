@@ -118,12 +118,15 @@ export default function AdminDrawer({
   // Estados de Adicionar Foto
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isHeicImage, setIsHeicImage] = useState(false);
   const [photoTitulo, setPhotoTitulo] = useState('');
   const [photoEtapa, setPhotoEtapa] = useState<string>(etapas[0]?.id || '');
   const [photoPrivate, setPhotoPrivate] = useState(false);
   const [photoCoords, setPhotoCoords] = useState<{ lat: number; lon: number; alt?: number } | null>(null);
   const [gpsStatusInfo, setGpsStatusInfo] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Estados de Adicionar Vídeo do Drone
   const [ytUrl, setYtUrl] = useState('');
@@ -160,13 +163,32 @@ export default function AdminDrawer({
     }
   };
 
+  // Sincronizar etapas padrão quando forem carregadas
+  React.useEffect(() => {
+    if (!photoEtapa && etapas.length > 0) {
+      setPhotoEtapa(etapas[0].id);
+    }
+    if (!ytEtapa && etapas.length > 0) {
+      setYtEtapa(etapas[0].id);
+    }
+  }, [etapas, photoEtapa, ytEtapa]);
+
   // Processamento e Leitura EXIF da Foto Selecionada com alta compatibilidade mobile
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhotoError(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
     setSelectedFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type.includes('heic');
+    setIsHeicImage(isHeic);
+
+    if (isHeic) {
+      setPhotoPreview(null);
+    } else {
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+
     setPhotoTitulo(file.name.replace(/\.[^/.]+$/, ''));
 
     // Ler metadados EXIF/GPS via exifr
@@ -242,33 +264,65 @@ export default function AdminDrawer({
     }
   }, [pendingPinCoord, pendingPinInfo]);
 
-  // Se o usuário clicou no mapa para marcar a foto/vídeo
-  const effectivePhotoLat = pendingPinCoord ? pendingPinCoord[1] : photoCoords?.lat;
-  const effectivePhotoLon = pendingPinCoord ? pendingPinCoord[0] : photoCoords?.lon;
+  // Fallback de coordenadas da etapa selecionada (se a foto não tiver EXIF GPS nem pin marcado)
+  const currentEtapa = useMemo(() => {
+    return etapas.find((e) => e.id === photoEtapa) || etapas[0];
+  }, [etapas, photoEtapa]);
+
+  const etapaFallbackCoord = useMemo<[number, number] | null>(() => {
+    if (!currentEtapa) return null;
+    const coords = currentEtapa.geojson_rota?.geometry?.coordinates;
+    if (coords && coords.length > 0) {
+      const mid = Math.floor(coords.length / 2);
+      return [coords[mid][0], coords[mid][1]];
+    }
+    if (currentEtapa.bounds?.centro) {
+      return currentEtapa.bounds.centro;
+    }
+    return null;
+  }, [currentEtapa]);
+
+  // Se o usuário clicou no mapa para marcar a foto/vídeo, ou EXIF lido, ou fallback da etapa selecionada
+  const effectivePhotoLat = pendingPinCoord
+    ? pendingPinCoord[1]
+    : (photoCoords?.lat ?? (etapaFallbackCoord ? etapaFallbackCoord[1] : undefined));
+
+  const effectivePhotoLon = pendingPinCoord
+    ? pendingPinCoord[0]
+    : (photoCoords?.lon ?? (etapaFallbackCoord ? etapaFallbackCoord[0] : undefined));
 
   // Enviar Nova Foto
   const handleUploadPhoto = async () => {
+    setPhotoError(null);
     if (!selectedFile) {
-      alert('Selecione uma foto primeiro.');
+      setPhotoError('Selecione uma foto primeiro.');
       return;
     }
     if (effectivePhotoLat === undefined || effectivePhotoLon === undefined) {
-      alert('Clique no botão "Marcar no Mapa" para posicionar esta foto na rota.');
+      setPhotoError('Selecione uma etapa ou clique no botão "Marcar no Mapa" para posicionar esta foto.');
       return;
     }
 
     setPhotoUploading(true);
     try {
       // 1. Upload do arquivo para o bucket do Supabase Storage
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const rawExt = selectedFile.name.split('.').pop() || 'jpg';
+      const cleanExt = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${cleanExt || 'jpg'}`;
       const filePath = `uploads/${fileName}`;
+
+      const mimeType = selectedFile.type || (cleanExt === 'png' ? 'image/png' : cleanExt === 'heic' ? 'image/heic' : 'image/jpeg');
 
       const { data: uploadData, error: uploadErr } = await supabase.storage
         .from('fotos-viagem')
-        .upload(filePath, selectedFile);
+        .upload(filePath, selectedFile, {
+          contentType: mimeType,
+          upsert: true,
+        });
 
-      if (uploadErr) throw uploadErr;
+      if (uploadErr) {
+        throw new Error(`Falha no armazenamento: ${uploadErr.message}`);
+      }
 
       const { data: urlData } = supabase.storage
         .from('fotos-viagem')
@@ -278,10 +332,11 @@ export default function AdminDrawer({
 
       // Calcular o km_no_trajeto se estiver associado a uma etapa com rota
       let calculatedKm: number | null = null;
+      const targetEtapaId = photoEtapa || currentEtapa?.id;
       if (pendingPinInfo?.kmNoTrajeto !== undefined && pendingPinInfo?.kmNoTrajeto !== null) {
         calculatedKm = pendingPinInfo.kmNoTrajeto;
-      } else if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && photoEtapa) {
-        const etapaObj = etapas.find((e) => e.id === photoEtapa);
+      } else if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && targetEtapaId) {
+        const etapaObj = etapas.find((e) => e.id === targetEtapaId);
         const coords = etapaObj?.geojson_rota?.geometry?.coordinates;
         if (coords && coords.length > 1) {
           const snapped = snapToRouteWithThreshold([effectivePhotoLon, effectivePhotoLat], coords, 500);
@@ -293,7 +348,7 @@ export default function AdminDrawer({
 
       // 2. Inserir no banco de dados na tabela public.midias
       const { error: dbErr } = await supabase.from('midias').insert({
-        etapa_id: photoEtapa || null,
+        etapa_id: targetEtapaId || null,
         tipo: 'foto',
         origem: photoCoords ? 's22' : 'manual',
         titulo: photoTitulo || selectedFile.name,
@@ -308,18 +363,28 @@ export default function AdminDrawer({
         posicao: `POINT(${effectivePhotoLon} ${effectivePhotoLat})`,
       });
 
-      if (dbErr) throw dbErr;
+      if (dbErr) {
+        throw new Error(`Falha no banco de dados: ${dbErr.message}`);
+      }
 
       alert('Foto adicionada com sucesso!');
       setSelectedFile(null);
       setPhotoPreview(null);
+      setIsHeicImage(false);
       setPhotoCoords(null);
       setGpsStatusInfo(null);
+      setPhotoTitulo('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       onResetPendingPin();
       await onRefreshData();
       onClose();
     } catch (err: any) {
-      alert(`Erro ao adicionar foto: ${err.message}`);
+      console.error('Erro ao adicionar foto:', err);
+      const msg = err?.message || 'Erro inesperado ao salvar foto.';
+      setPhotoError(msg);
+      alert(`Erro ao adicionar foto: ${msg}`);
     } finally {
       setPhotoUploading(false);
     }
@@ -388,11 +453,17 @@ export default function AdminDrawer({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl">
+    <div
+      className={`fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm transition-opacity duration-300 ${
+        isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+    >
+      <div
+        className={`w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
         {/* Cabeçalho */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/40">
           <div className="flex items-center gap-2">
@@ -521,19 +592,27 @@ export default function AdminDrawer({
               {/* ABA 1: ADICIONAR FOTO */}
               {activeTab === 'foto' && (
                 <div className="space-y-4">
+                  {photoError && (
+                    <div className="p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{photoError}</span>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-xs font-medium text-slate-300 block mb-1">
                       Foto do Celular / Computador
                     </label>
                     <input
+                      ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*,.heic,.heif"
                       onChange={handleFileChange}
                       className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-500 cursor-pointer"
                     />
                   </div>
 
-                  {photoPreview && (
+                  {photoPreview ? (
                     <div className="relative rounded-xl overflow-hidden border border-slate-700 aspect-video bg-black/40 flex items-center justify-center">
                       <img
                         src={photoPreview}
@@ -541,7 +620,13 @@ export default function AdminDrawer({
                         className="max-h-full max-w-full object-contain"
                       />
                     </div>
-                  )}
+                  ) : isHeicImage ? (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-center">
+                      <Sparkles className="w-6 h-6 text-amber-400 mx-auto mb-1.5" />
+                      <p className="text-xs font-semibold text-amber-200">Foto HEIC (iPhone) selecionada</p>
+                      <p className="text-[11px] text-amber-300/70 mt-0.5">Metadados GPS lidos com sucesso. O arquivo será enviado com metadados preservados.</p>
+                    </div>
+                  ) : null}
 
                   <div>
                     <label className="text-xs font-medium text-slate-300 block mb-1">
@@ -577,19 +662,29 @@ export default function AdminDrawer({
                   <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400">Coordenadas GPS:</span>
-                      {effectivePhotoLat ? (
+                      {pendingPinCoord ? (
                         <span className="text-emerald-400 font-semibold flex items-center gap-1 font-mono text-[11px]">
                           <Check className="w-3.5 h-3.5" />
-                          {effectivePhotoLat.toFixed(5)}, {effectivePhotoLon?.toFixed(5)}
+                          {pendingPinCoord[1].toFixed(5)}, {pendingPinCoord[0].toFixed(5)}
+                        </span>
+                      ) : photoCoords ? (
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1 font-mono text-[11px]">
+                          <Check className="w-3.5 h-3.5" />
+                          {photoCoords.lat.toFixed(5)}, {photoCoords.lon.toFixed(5)}
+                        </span>
+                      ) : etapaFallbackCoord ? (
+                        <span className="text-amber-400 font-medium flex items-center gap-1 font-mono text-[11px]">
+                          <MapPin className="w-3.5 h-3.5" />
+                          Dia {currentEtapa?.numero_dia} (Padrão)
                         </span>
                       ) : (
-                        <span className="text-amber-400 font-medium text-[11px]">Não detectada no arquivo</span>
+                        <span className="text-amber-400 font-medium text-[11px]">Não detectada</span>
                       )}
                     </div>
 
-                    {!effectivePhotoLat && selectedFile && (
+                    {!photoCoords && selectedFile && !pendingPinCoord && (
                       <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200">
-                        💡 Foto sem dados de GPS (comum em fotos salvas do WhatsApp ou tiradas com localização desligada). Toque no botão abaixo e toque na rota no mapa para marcar a posição.
+                        💡 Foto sem dados de GPS no arquivo. Usando a posição do Dia {currentEtapa?.numero_dia}. Caso queira colocar em um ponto específico, toque no botão abaixo e toque na rota no mapa.
                       </div>
                     )}
 
@@ -605,11 +700,11 @@ export default function AdminDrawer({
 
                     <button
                       type="button"
-                      onClick={() => onStartMapPinPick('foto', { etapaId: photoEtapa })}
+                      onClick={() => onStartMapPinPick('foto', { etapaId: photoEtapa || currentEtapa?.id })}
                       className="w-full py-2 rounded-lg border border-orange-500/60 text-orange-400 hover:bg-orange-500/10 active:bg-orange-500/20 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <MapPin className="w-3.5 h-3.5" />
-                      {effectivePhotoLat ? 'Ajustar Ponto Clicando na Rota do Mapa' : 'Marcar Local no Mapa (Clique na Rota)'}
+                      {pendingPinCoord || photoCoords ? 'Ajustar Ponto Clicando na Rota do Mapa' : 'Marcar Ponto Específico no Mapa (Opcional)'}
                     </button>
                   </div>
 
@@ -632,10 +727,19 @@ export default function AdminDrawer({
                   <button
                     onClick={handleUploadPhoto}
                     disabled={photoUploading}
-                    className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 font-semibold text-xs text-white shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2"
+                    className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 font-semibold text-xs text-white shadow-lg shadow-orange-600/30 transition flex items-center justify-center gap-2 disabled:opacity-60"
                   >
-                    <Upload className="w-4 h-4" />
-                    {photoUploading ? 'Enviando Foto...' : 'Salvar e Publicar Foto'}
+                    {photoUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Enviando Foto para a Nuvem...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>Salvar e Publicar Foto</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}
