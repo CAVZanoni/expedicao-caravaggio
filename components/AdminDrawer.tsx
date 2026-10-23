@@ -150,7 +150,11 @@ export default function AdminDrawer({
       if (error) throw error;
       onLoginSuccess();
     } catch (err: any) {
-      setAuthError(err.message || 'Falha ao autenticar.');
+      if (err?.message === 'Invalid login credentials') {
+        setAuthError('E-mail ou senha incorretos.');
+      } else {
+        setAuthError(err?.message || 'Falha ao autenticar.');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -418,9 +422,12 @@ export default function AdminDrawer({
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               <div>
-                <label className="text-xs text-slate-300 block mb-1">E-mail</label>
+                <label htmlFor="admin-email" className="text-xs text-slate-300 block mb-1">E-mail</label>
                 <input
+                  id="admin-email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -430,9 +437,12 @@ export default function AdminDrawer({
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 block mb-1">Senha</label>
+                <label htmlFor="admin-password" className="text-xs text-slate-300 block mb-1">Senha</label>
                 <input
+                  id="admin-password"
+                  name="password"
                   type="password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

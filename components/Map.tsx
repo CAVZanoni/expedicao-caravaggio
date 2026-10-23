@@ -342,10 +342,13 @@ export default function Map({
   // Efeito de Foco Dinâmico (Zoom cinematográfico flyTo no mapa ao clicar na galeria)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !focusMidia) return;
+    if (!map || !focusMidia || !focusMidia.coord) return;
+
+    const [lon, lat] = focusMidia.coord;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
 
     map.flyTo({
-      center: focusMidia.coord,
+      center: [lon, lat],
       zoom: 15.5,
       pitch: 45,
       duration: 1200,
@@ -363,7 +366,7 @@ export default function Map({
       pendingMarkerRef.current = null;
     }
 
-    if (pendingPinCoord) {
+    if (pendingPinCoord && Number.isFinite(pendingPinCoord[0]) && Number.isFinite(pendingPinCoord[1])) {
       const el = document.createElement('div');
       el.className = 'flex flex-col items-center justify-center pointer-events-none z-30 animate-bounce';
       el.innerHTML = `
@@ -826,12 +829,18 @@ export default function Map({
     });
   }, [midias, diaSelecionado, etapas, isAdmin, isEditMode, expandedClusterId, highlightedMidiaId]);
 
-  // Marcador móvel do cursor de altimetria (hover sincronizado)
+  // Marcador móvel do cursor de altimetria (hover sincronizado com validação de coordenadas)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (hoverCoord) {
+    const isValidCoord =
+      hoverCoord &&
+      Array.isArray(hoverCoord) &&
+      Number.isFinite(hoverCoord[0]) &&
+      Number.isFinite(hoverCoord[1]);
+
+    if (isValidCoord) {
       if (!hoverMarkerRef.current) {
         const el = document.createElement('div');
         el.className = 'w-4 h-4 rounded-full bg-cyan-400 border-2 border-white shadow-lg animate-pulse';

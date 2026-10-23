@@ -17,16 +17,25 @@ export default function Home() {
   const [diaSelecionado, setDiaSelecionado] = useState<number | null>(null);
   const [tipoMapa, setTipoMapa] = useState<'satellite' | 'streets' | 'topo'>('satellite');
 
-  // Filtros de Mídia: Fotos / Vídeos / Vídeos do Drone
-  const [mediaFilters, setMediaFilters] = useState<MediaFilters>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('caravaggio_media_filters');
-        if (saved) return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return { foto: true, video: true, video_drone: true };
+  // Filtros de Mídia: Fotos / Vídeos / Vídeos do Drone (inicialização idêntica no SSR e CSR)
+  const [mediaFilters, setMediaFilters] = useState<MediaFilters>({
+    foto: true,
+    video: true,
+    video_drone: true,
   });
+
+  // Restaurar preferências salvas após a montagem no cliente (elimina Hydration Mismatch #418)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('caravaggio_media_filters');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          setMediaFilters(parsed);
+        }
+      }
+    } catch (e) {}
+  }, []);
 
   // Salvar preferência de filtros de mídia
   useEffect(() => {
