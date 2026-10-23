@@ -130,14 +130,14 @@ export default function Header({
 
         {/* Controles de Mapa, OneDrive e Acesso Admin */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Link da Pasta OneDrive */}
+          {/* Link da Pasta OneDrive (Exclusivo para Vídeos de Drone) */}
           {config?.onedrive_pasta_url && (
             <a
               href={config.onedrive_pasta_url}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 sm:p-2 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs shrink-0"
-              title="Abrir pasta de vídeos e arquivos no OneDrive"
+              title="Abrir pasta de vídeos de drone no OneDrive"
             >
               <FolderOpen className="w-4 h-4 text-sky-400" />
               <span className="hidden md:inline">OneDrive</span>

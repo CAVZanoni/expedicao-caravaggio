@@ -162,6 +162,46 @@ export default function Home() {
     }
   };
 
+  // Atualizar Privacidade em Lote por IDs (usado na galeria lateral)
+  const handleBatchUpdatePrivacy = async (ids: string[], isPrivate: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('midias')
+        .update({ is_private: isPrivate })
+        .in('id', ids);
+
+      if (error) throw error;
+
+      setMidias((prev) =>
+        prev.map((m) => (ids.includes(m.id) ? { ...m, is_private: isPrivate } : m))
+      );
+
+      if (selectedMidia && ids.includes(selectedMidia.id)) {
+        setSelectedMidia((prev) => (prev ? { ...prev, is_private: isPrivate } : null));
+      }
+    } catch (err: any) {
+      alert(`Erro ao atualizar privacidade em lote: ${err.message}`);
+    }
+  };
+
+  // Atualizar Privacidade Global por Tipo de Mídia (usado no AdminDrawer)
+  const handleGlobalPrivacyByType = async (tipo: 'foto' | 'video' | 'video_drone', isPrivate: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('midias')
+        .update({ is_private: isPrivate })
+        .eq('tipo', tipo);
+
+      if (error) throw error;
+
+      setMidias((prev) =>
+        prev.map((m) => (m.tipo === tipo ? { ...m, is_private: isPrivate } : m))
+      );
+    } catch (err: any) {
+      alert(`Erro ao aplicar privacidade em lote: ${err.message}`);
+    }
+  };
+
   // Atualizar Links de Vídeo e Download
   const handleUpdateLinks = async (
     id: string,
@@ -343,15 +383,18 @@ export default function Home() {
 
   const etapaAtual = etapas.find((e) => e.numero_dia === diaSelecionado);
 
-  // Mídias ativas filtradas pelos checks de tipo (Fotos, Vídeos, Drone)
+  // Mídias ativas filtradas pelos checks de tipo (Fotos, Vídeos, Drone) e privacidade
   const midiasFiltradasPorTipo = useMemo(() => {
     return midias.filter((m) => {
+      // Se não for admin, NUNCA exibir mídias marcadas como privadas
+      if (!isAdmin && m.is_private) return false;
+
       if (m.tipo === 'foto') return mediaFilters.foto;
       if (m.tipo === 'video') return mediaFilters.video;
       if (m.tipo === 'video_drone') return mediaFilters.video_drone;
       return true;
     });
-  }, [midias, mediaFilters]);
+  }, [midias, mediaFilters, isAdmin]);
 
   // Mídias do contexto atual ordenadas do início ao fim do trajeto (para navegação no modal)
   const midiasContexto = useMemo(() => {
@@ -485,6 +528,8 @@ export default function Home() {
         mediaFilters={mediaFilters}
         onToggleFilter={handleToggleFilter}
         onToggleAllFilters={handleToggleAllFilters}
+        isAdmin={isAdmin}
+        onBatchUpdatePrivacy={handleBatchUpdatePrivacy}
       />
 
       {/* Modal Lightbox em Quase Tela Cheia com Navegação */}
@@ -518,6 +563,8 @@ export default function Home() {
         }}
         etapas={etapas}
         config={config}
+        midias={midias}
+        onGlobalPrivacyByType={handleGlobalPrivacyByType}
         onUpdateGlobalOneDrive={handleUpdateGlobalOneDrive}
         onStartMapPinPick={handleStartMapPinPick}
         pendingPinCoord={pendingPinCoord}

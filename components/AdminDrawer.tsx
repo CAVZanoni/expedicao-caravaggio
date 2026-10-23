@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { supabase, Etapa, ExpedicaoConfig } from '@/lib/supabase';
+import React, { useState, useMemo } from 'react';
+import { supabase, Etapa, ExpedicaoConfig, Midia } from '@/lib/supabase';
 import { findBestEtapaForCoord, snapToRouteWithThreshold } from '@/lib/geo';
 import exifr from 'exifr';
 import {
@@ -17,6 +17,8 @@ import {
   LogOut,
   LogIn,
   Sparkles,
+  Shield,
+  Loader2,
 } from 'lucide-react';
 
 interface AdminDrawerProps {
@@ -27,6 +29,8 @@ interface AdminDrawerProps {
   onLogout: () => void;
   etapas: Etapa[];
   config?: ExpedicaoConfig | null;
+  midias?: Midia[];
+  onGlobalPrivacyByType?: (tipo: 'foto' | 'video' | 'video_drone', isPrivate: boolean) => Promise<void>;
   onUpdateGlobalOneDrive: (novaUrl: string) => Promise<void>;
   onStartMapPinPick: (tipo: 'foto' | 'video_drone', tempInfo: any) => void;
   pendingPinCoord: [number, number] | null;
@@ -43,6 +47,8 @@ export default function AdminDrawer({
   onLogout,
   etapas,
   config,
+  midias = [],
+  onGlobalPrivacyByType,
   onUpdateGlobalOneDrive,
   onStartMapPinPick,
   pendingPinCoord,
@@ -57,7 +63,50 @@ export default function AdminDrawer({
   const [authError, setAuthError] = useState('');
 
   // Estados de Abas do Admin
-  const [activeTab, setActiveTab] = useState<'foto' | 'drone' | 'config'>('foto');
+  const [activeTab, setActiveTab] = useState<'foto' | 'drone' | 'config' | 'privacidade'>('foto');
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  // Estatísticas de Privacidade
+  const statsPrivacidade = useMemo(() => {
+    let fotosTotal = 0;
+    let fotosPublicas = 0;
+    let fotosPrivadas = 0;
+
+    let droneTotal = 0;
+    let dronePublicos = 0;
+    let dronePrivados = 0;
+
+    for (const m of midias) {
+      if (m.tipo === 'foto') {
+        fotosTotal++;
+        if (m.is_private) fotosPrivadas++;
+        else fotosPublicas++;
+      } else if (m.tipo === 'video_drone') {
+        droneTotal++;
+        if (m.is_private) dronePrivados++;
+        else dronePublicos++;
+      }
+    }
+
+    return {
+      fotosTotal,
+      fotosPublicas,
+      fotosPrivadas,
+      droneTotal,
+      dronePublicos,
+      dronePrivados,
+    };
+  }, [midias]);
+
+  const handleApplyGlobalPrivacy = async (tipo: 'foto' | 'video_drone', isPrivate: boolean) => {
+    if (!onGlobalPrivacyByType) return;
+    setBatchLoading(true);
+    try {
+      await onGlobalPrivacyByType(tipo, isPrivate);
+    } finally {
+      setBatchLoading(false);
+    }
+  };
 
   // Estados de Adicionar Foto
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -367,36 +416,48 @@ export default function AdminDrawer({
           /* Se logado, exibe as ferramentas completas de gestão */
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Seletor de Abas de Administração */}
-            <div className="flex border-b border-slate-800 bg-slate-950/60 px-4">
+            <div className="flex border-b border-slate-800 bg-slate-950/60 px-2 sm:px-4">
               <button
                 onClick={() => setActiveTab('foto')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 ${
                   activeTab === 'foto'
                     ? 'border-orange-500 text-orange-400'
                     : 'border-transparent text-slate-400 hover:text-white'
                 }`}
               >
-                <Upload className="w-3.5 h-3.5" /> + Foto
+                <Upload className="w-3.5 h-3.5" /> <span className="hidden xs:inline">+ Foto</span>
               </button>
               <button
                 onClick={() => setActiveTab('drone')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 ${
                   activeTab === 'drone'
                     ? 'border-red-500 text-red-400'
                     : 'border-transparent text-slate-400 hover:text-white'
                 }`}
               >
-                <Video className="w-3.5 h-3.5" /> + Vídeo Drone
+                <Video className="w-3.5 h-3.5" /> <span className="hidden xs:inline">+ Drone</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('privacidade')}
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 ${
+                  activeTab === 'privacidade'
+                    ? 'border-amber-500 text-amber-400'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+                title="Controle de mídias públicas e privadas"
+              >
+                <Shield className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Privacidade</span>
               </button>
               <button
                 onClick={() => setActiveTab('config')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 ${
                   activeTab === 'config'
                     ? 'border-sky-500 text-sky-400'
                     : 'border-transparent text-slate-400 hover:text-white'
                 }`}
+                title="Configuração da pasta geral no OneDrive"
               >
-                <FolderOpen className="w-3.5 h-3.5" /> OneDrive
+                <FolderOpen className="w-3.5 h-3.5" /> <span className="hidden xs:inline">OneDrive</span>
               </button>
             </div>
 
@@ -534,17 +595,9 @@ export default function AdminDrawer({
                     />
                   </div>
 
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1">
-                      Link de Download do Arquivo no OneDrive (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={ytOneDriveUrl}
-                      onChange={(e) => setYtOneDriveUrl(e.target.value)}
-                      placeholder="Link direto do arquivo ou deixe em branco para usar a pasta geral"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                    />
+                  <div className="p-2.5 rounded-lg bg-sky-950/30 border border-sky-800/40 text-[11px] text-sky-300 flex items-center gap-2">
+                    <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span>Os vídeos de drone direcionam o download para a pasta raiz no OneDrive.</span>
                   </div>
 
                   <div>
@@ -612,16 +665,122 @@ export default function AdminDrawer({
                 </div>
               )}
 
-              {/* ABA 3: CONFIGURAÇÃO DO ONEDRIVE */}
+              {/* ABA 3: GERENCIADOR DE PRIVACIDADE EM LOTE */}
+              {activeTab === 'privacidade' && (
+                <div className="space-y-4">
+                  <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/60 text-xs text-amber-200 space-y-1">
+                    <p className="font-semibold flex items-center gap-1.5 text-amber-300">
+                      <Shield className="w-4 h-4" /> Controle de Exibição Pública
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-amber-200/80">
+                      Mídias privadas aparecem exclusivamente para você (Administrador), identificadas com o selo de &ldquo;Privado&rdquo;. Visitantes públicos verão apenas mídias marcadas como públicas.
+                    </p>
+                  </div>
+
+                  {/* Estatísticas e Ações: Fotos */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5 text-orange-400" /> Fotos
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {statsPrivacidade.fotosTotal} fotos no total
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="text-[10px] text-emerald-400 block font-medium">Públicas</span>
+                        <span className="text-base font-bold text-emerald-300">{statsPrivacidade.fotosPublicas}</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <span className="text-[10px] text-amber-400 block font-medium">Privadas</span>
+                        <span className="text-base font-bold text-amber-300">{statsPrivacidade.fotosPrivadas}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={batchLoading || statsPrivacidade.fotosPrivadas === statsPrivacidade.fotosTotal}
+                        onClick={() => handleApplyGlobalPrivacy('foto', true)}
+                        className="py-2 px-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {batchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3 stroke-[2.5]" />}
+                        <span>Todas Privadas</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={batchLoading || statsPrivacidade.fotosPublicas === statsPrivacidade.fotosTotal}
+                        onClick={() => handleApplyGlobalPrivacy('foto', false)}
+                        className="py-2 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {batchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3 stroke-[2.5]" />}
+                        <span>Todas Públicas</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Estatísticas e Ações: Vídeos do Drone */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Video className="w-3.5 h-3.5 text-red-400" /> Vídeos de Drone
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {statsPrivacidade.droneTotal} vídeos no total
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="text-[10px] text-emerald-400 block font-medium">Públicos</span>
+                        <span className="text-base font-bold text-emerald-300">{statsPrivacidade.dronePublicos}</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <span className="text-[10px] text-amber-400 block font-medium">Privados</span>
+                        <span className="text-base font-bold text-amber-300">{statsPrivacidade.dronePrivados}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={batchLoading || statsPrivacidade.dronePrivados === statsPrivacidade.droneTotal}
+                        onClick={() => handleApplyGlobalPrivacy('video_drone', true)}
+                        className="py-2 px-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {batchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3 stroke-[2.5]" />}
+                        <span>Todos Privados</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={batchLoading || statsPrivacidade.dronePublicos === statsPrivacidade.droneTotal}
+                        onClick={() => handleApplyGlobalPrivacy('video_drone', false)}
+                        className="py-2 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {batchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3 stroke-[2.5]" />}
+                        <span>Todos Públicos</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 text-center">
+                    💡 Dica: Você também pode alternar mídias específicas selecionando-as na <strong>Galeria Lateral</strong>.
+                  </p>
+                </div>
+              )}
+
+              {/* ABA 4: CONFIGURAÇÃO DO ONEDRIVE */}
               {activeTab === 'config' && (
                 <div className="space-y-4">
                   <div className="p-3 rounded-xl bg-sky-950/40 border border-sky-800/60 text-xs text-sky-200">
-                    Caso o link da pasta de vídeos do OneDrive expire ou mude, atualize-o abaixo. Todos os botões de download dos vídeos passarão a apontar para o novo link imediatamente.
+                    O link da pasta do OneDrive é exclusivo para os vídeos originais de Drone em alta resolução. Caso o link da pasta expire ou mude, atualize-o abaixo. Todos os botões passarão a apontar para o novo link imediatamente.
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-slate-300 block mb-1">
-                      Link da Pasta Geral no OneDrive
+                      Link da Pasta Geral no OneDrive (Vídeos de Drone)
                     </label>
                     <textarea
                       rows={3}

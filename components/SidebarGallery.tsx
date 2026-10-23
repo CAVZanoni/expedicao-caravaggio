@@ -18,8 +18,10 @@ import {
   Filter,
   Check,
   Lock,
+  Unlock,
   MapPin,
   Play,
+  FolderOpen,
 } from 'lucide-react';
 import DroneIcon from '@/components/icons/DroneIcon';
 
@@ -38,6 +40,8 @@ interface SidebarGalleryProps {
   mediaFilters: MediaFilters;
   onToggleFilter: (tipo: keyof MediaFilters) => void;
   onToggleAllFilters: (active: boolean) => void;
+  isAdmin?: boolean;
+  onBatchUpdatePrivacy?: (ids: string[], isPrivate: boolean) => Promise<void>;
 }
 
 export default function SidebarGallery({
@@ -55,6 +59,8 @@ export default function SidebarGallery({
   mediaFilters,
   onToggleFilter,
   onToggleAllFilters,
+  isAdmin,
+  onBatchUpdatePrivacy,
 }: SidebarGalleryProps) {
   // Escopo de visualização: 'etapa' ou 'todas'
   const [escopo, setEscopo] = useState<'etapa' | 'todas'>('etapa');
@@ -74,12 +80,15 @@ export default function SidebarGallery({
   // Mídias no escopo atual (etapa selecionada ou toda a viagem)
   const midiasNoEscopo = useMemo(() => {
     return midias.filter((m) => {
+      // Se não for admin, NUNCA exibir mídias marcadas como privadas
+      if (!isAdmin && m.is_private) return false;
+
       if (escopo === 'etapa' && diaSelecionado && etapaAtual) {
         return m.etapa_id === etapaAtual.id;
       }
       return true;
     });
-  }, [midias, escopo, diaSelecionado, etapaAtual]);
+  }, [midias, escopo, diaSelecionado, etapaAtual, isAdmin]);
 
   // Contagem dinâmica por tipo no escopo atual
   const contagem = useMemo(() => {
@@ -369,9 +378,10 @@ export default function SidebarGallery({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sky-400 hover:text-sky-300 flex items-center gap-1 hover:underline text-[10px]"
-                    title="Acessar pasta de arquivos originais no OneDrive"
+                    title="Acessar pasta de vídeos de drone originais no OneDrive"
                   >
-                    <span>OneDrive</span>
+                    <FolderOpen className="w-3 h-3 text-sky-400" />
+                    <span>Drone no OneDrive</span>
                     <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 )}
@@ -624,21 +634,12 @@ export default function SidebarGallery({
                             ev.stopPropagation();
                             onFocusOnMap(m);
                           }}
-                          className="absolute bottom-1.5 right-8 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-80 group-hover:opacity-100 shadow-md border border-white/10 z-10"
+                          className="absolute bottom-1.5 right-1.5 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-80 group-hover:opacity-100 shadow-md border border-white/10 z-10"
                           title="Focar este ponto no mapa com zoom"
                         >
                           <MapPin className="w-3.5 h-3.5 text-orange-400 group-hover:text-white" />
                         </button>
                       )}
-
-                      {/* Botão de Download Individual no Canto Inferior Direito */}
-                      <button
-                        onClick={(ev) => handleDownloadSingle(m, ev)}
-                        className="absolute bottom-1.5 right-1.5 p-1.5 rounded-md bg-slate-900/80 hover:bg-orange-600 text-slate-300 hover:text-white transition opacity-0 group-hover:opacity-100 shadow-md border border-white/10 z-10"
-                        title="Baixar esta foto diretamente em HD"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
                     </div>
 
                     {/* Rodapé com Título e Data */}
@@ -686,8 +687,57 @@ export default function SidebarGallery({
           )}
         </div>
 
-        {/* Rodapé com Botão de Download em Lote (.ZIP) */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/90 space-y-2">
+        {/* Rodapé com Ações em Lote e Download em Lote (.ZIP) */}
+        <div className="p-4 border-t border-slate-800 bg-slate-950/90 space-y-2.5">
+          {/* Painel Administrativo de Ações em Lote de Privacidade */}
+          {isAdmin && selectedIds.size > 0 && (
+            <div className="p-2.5 bg-slate-900 border border-amber-500/40 rounded-xl space-y-2 shadow-lg">
+              <div className="flex items-center justify-between text-xs text-amber-300 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>{selectedIds.size} mídias selecionadas</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="text-slate-400 hover:text-white text-[10px] underline"
+                >
+                  Limpar seleção
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onBatchUpdatePrivacy) {
+                      await onBatchUpdatePrivacy(Array.from(selectedIds), true);
+                      handleClearSelection();
+                    }
+                  }}
+                  className="py-1.5 px-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95"
+                  title="Marcar todas as mídias selecionadas como privadas"
+                >
+                  <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Tornar Privadas</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onBatchUpdatePrivacy) {
+                      await onBatchUpdatePrivacy(Array.from(selectedIds), false);
+                      handleClearSelection();
+                    }
+                  }}
+                  className="py-1.5 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95"
+                  title="Marcar todas as mídias selecionadas como públicas"
+                >
+                  <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Tornar Públicas</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Barra de Progresso quando estiver comprimindo */}
           {isZipping && (
             <div className="space-y-1.5">

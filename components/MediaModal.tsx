@@ -18,6 +18,7 @@ import {
   Maximize2,
   Check,
   Cloud,
+  FolderOpen,
 } from 'lucide-react';
 import DroneIcon from '@/components/icons/DroneIcon';
 
@@ -292,19 +293,6 @@ export default function MediaModal({
                   />
                 </div>
               )}
-
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">
-                  Link de Download do OneDrive
-                </label>
-                <input
-                  type="text"
-                  value={editOneDrive}
-                  onChange={(e) => setEditOneDrive(e.target.value)}
-                  placeholder="https://1drv.ms/..."
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500"
-                />
-              </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-2">
@@ -352,58 +340,18 @@ export default function MediaModal({
 
           {/* Botões de Ação */}
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-            {/* Download */}
-            {midia.tipo === 'video_drone' ? (
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                {/* Download Direto 1-Click do Vídeo 4K Original */}
-                {midia.arquivo_nome && (
-                  <a
-                    href={`/api/media/${midia.arquivo_nome}?download=true`}
-                    download={midia.arquivo_nome}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-lg shadow-orange-600/20 transition hover:scale-[1.02]"
-                    title="Baixar arquivo original em 4K diretamente no seu dispositivo"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Baixar Vídeo 4K</span>
-                  </a>
-                )}
-
-                {/* Abrir Pasta no OneDrive */}
-                {downloadOneDriveUrl && downloadOneDriveUrl !== '#' && (
-                  <a
-                    href={downloadOneDriveUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-800 hover:bg-sky-600 text-slate-300 hover:text-white border border-slate-700/80 transition"
-                    title="Abrir pasta correspondente na nuvem do OneDrive"
-                  >
-                    <Cloud className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="hidden xs:inline">OneDrive</span>
-                    <ExternalLink className="w-3 h-3 opacity-70" />
-                  </a>
-                )}
-              </div>
-            ) : midia.tipo === 'video' ? (
+            {/* Acesso à Pasta do OneDrive Exclusivo para Vídeos de Drone */}
+            {midia.tipo === 'video_drone' && config?.onedrive_pasta_url && (
               <a
-                href={fullResUrl}
-                download={midia.arquivo_nome || 'video_caravaggio.mp4'}
+                href={config.onedrive_pasta_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-600/20 transition"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white shadow-lg shadow-sky-600/20 transition hover:scale-[1.02] active:scale-95"
+                title="Abrir pasta de vídeos originais no OneDrive"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar Vídeo</span>
-              </a>
-            ) : (
-              <a
-                href={fullResUrl}
-                download={midia.arquivo_nome || 'foto_caravaggio.jpg'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20 transition"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar Foto HD</span>
+                <FolderOpen className="w-3.5 h-3.5 text-white" />
+                <span>Vídeos no OneDrive</span>
+                <ExternalLink className="w-3 h-3 opacity-70" />
               </a>
             )}
 
