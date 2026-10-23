@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Etapa, Midia, MediaFilters } from '@/lib/supabase';
-import { snapToRoute, snapToRouteWithThreshold, distanceMeters } from '@/lib/geo';
+import { snapToRoute, snapToRouteWithThreshold, distanceMeters, findBestEtapaForCoord } from '@/lib/geo';
 import { Camera, Video, Film, Check, Lock, Unlock, Undo2 } from 'lucide-react';
 import DroneIcon from '@/components/icons/DroneIcon';
 
@@ -29,7 +29,15 @@ interface MapProps {
   hoverCoord: [number, number] | null;
   isAdmin: boolean;
   isPickingPin: boolean;
-  onPickPinCoord: (coord: [number, number], altitude?: number, kmNoTrajeto?: number) => void;
+  onPickPinCoord: (
+    coord: [number, number],
+    altitude?: number,
+    kmNoTrajeto?: number | null,
+    etapaId?: string,
+    numeroDia?: number
+  ) => void;
+  onCancelPickPin?: () => void;
+  targetEtapaId?: string | null;
   onUpdateMidiaCoord: (
     id: string,
     lat: number,
@@ -62,6 +70,8 @@ export default function Map({
   isAdmin,
   isPickingPin,
   onPickPinCoord,
+  onCancelPickPin,
+  targetEtapaId,
   onUpdateMidiaCoord,
   highlightedMidiaId,
   mediaFilters,
@@ -76,6 +86,22 @@ export default function Map({
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const hoverMarkerRef = useRef<maplibregl.Marker | null>(null);
   const pendingMarkerRef = useRef<maplibregl.Marker | null>(null);
+
+  // Referências atualizadas para evitar stale closures em eventos do mapa
+  const isPickingPinRef = useRef(isPickingPin);
+  isPickingPinRef.current = isPickingPin;
+
+  const diaSelecionadoRef = useRef(diaSelecionado);
+  diaSelecionadoRef.current = diaSelecionado;
+
+  const etapasRef = useRef(etapas);
+  etapasRef.current = etapas;
+
+  const targetEtapaIdRef = useRef(targetEtapaId);
+  targetEtapaIdRef.current = targetEtapaId;
+
+  const onPickPinCoordRef = useRef(onPickPinCoord);
+  onPickPinCoordRef.current = onPickPinCoord;
 
   // ID do cluster que está expandido em leque (Spiderfier)
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
@@ -177,23 +203,53 @@ export default function Map({
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
-    // Ao clicar no mapa (com snap automático ao caminho caso esteja marcando pin)
+    // Ao clicar no mapa (com snap inteligente ao caminho)
     map.on('click', (e) => {
       // Se clicar no mapa vazio, fecha qualquer cluster expandido
       setExpandedClusterId(null);
 
-      if (isPickingPin) {
-        // Encontrar rota ativa para aplicar snap
-        const etapaAtiva = diaSelecionado
-          ? etapas.find((et) => et.numero_dia === diaSelecionado)
-          : etapas[0];
+      if (isPickingPinRef.current) {
+        const clickLng = e.lngLat.lng;
+        const clickLat = e.lngLat.lat;
+        const currentEtapas = etapasRef.current || [];
+        const currentDia = diaSelecionadoRef.current;
+        const currentTargetId = targetEtapaIdRef.current;
 
-        const routeCoords = etapaAtiva?.geojson_rota?.geometry?.coordinates || [];
-        if (routeCoords.length > 0) {
-          const snapped = snapToRouteWithThreshold([e.lngLat.lng, e.lngLat.lat], routeCoords, 350);
-          onPickPinCoord(snapped.coord, snapped.altitude, snapped.kmNoTrajeto ?? undefined);
+        // Se uma etapa específica estiver selecionada no cabeçalho ou no upload
+        let candidateEtapa: Etapa | undefined;
+        if (currentDia !== null) {
+          candidateEtapa = currentEtapas.find((et) => et.numero_dia === currentDia);
+        } else if (currentTargetId) {
+          candidateEtapa = currentEtapas.find((et) => et.id === currentTargetId);
+        }
+
+        if (candidateEtapa?.geojson_rota?.geometry?.coordinates?.length) {
+          const coords = candidateEtapa.geojson_rota.geometry.coordinates;
+          // Limiar de 2500m para facilitar o toque na rota mesmo com dedos em smartphones
+          const snapped = snapToRouteWithThreshold([clickLng, clickLat], coords, 2500);
+          onPickPinCoordRef.current(
+            snapped.coord,
+            snapped.altitude,
+            snapped.kmNoTrajeto,
+            candidateEtapa.id,
+            candidateEtapa.numero_dia
+          );
+          return;
+        }
+
+        // Se estiver em Visão Geral (todos os dias), busca a rota mais próxima entre todas as etapas
+        const bestMatch = findBestEtapaForCoord([clickLng, clickLat], currentEtapas, 35000);
+        if (bestMatch) {
+          onPickPinCoordRef.current(
+            bestMatch.snappedPoint.coord,
+            bestMatch.snappedPoint.altitude,
+            bestMatch.snappedPoint.kmNoTrajeto,
+            bestMatch.etapaId,
+            bestMatch.numeroDia
+          );
         } else {
-          onPickPinCoord([e.lngLat.lng, e.lngLat.lat]);
+          // Fora de qualquer rota: fixa o ponto bruto clicado
+          onPickPinCoordRef.current([clickLng, clickLat]);
         }
       }
     });
@@ -271,6 +327,16 @@ export default function Map({
     const map = mapRef.current;
     if (!map) return;
     map.getCanvas().style.cursor = isPickingPin ? 'crosshair' : '';
+  }, [isPickingPin]);
+
+  // Desativar interceptação de cliques nos marcadores existentes durante a marcação de novo pin
+  useEffect(() => {
+    markersRef.current.forEach((m) => {
+      const el = m.getElement();
+      if (el) {
+        el.style.pointerEvents = isPickingPin ? 'none' : 'auto';
+      }
+    });
   }, [isPickingPin]);
 
   // Efeito de Foco Dinâmico (Zoom cinematográfico flyTo no mapa ao clicar na galeria)
@@ -787,8 +853,20 @@ export default function Map({
     <div className="relative w-full h-full min-h-[450px]">
       <div ref={mapContainerRef} className="w-full h-full" />
       {isPickingPin && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-bounce z-30">
-          <span>Clique na rota para ancorar a foto diretamente ao caminho</span>
+        <div className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-900/95 border-2 border-orange-500 text-white px-3 sm:px-4 py-2 rounded-full shadow-2xl backdrop-blur-md animate-fadeIn max-w-[94vw]">
+          <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping shrink-0" />
+          <span className="text-xs font-semibold text-orange-200 truncate">
+            Toque na rota para posicionar a foto
+          </span>
+          {onCancelPickPin && (
+            <button
+              type="button"
+              onClick={onCancelPickPin}
+              className="ml-1 sm:ml-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold border border-slate-700 transition shrink-0 active:scale-95"
+            >
+              ✕ Cancelar
+            </button>
+          )}
         </div>
       )}
       {expandedClusterId && isAdmin && (

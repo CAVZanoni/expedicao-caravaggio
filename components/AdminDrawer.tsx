@@ -32,8 +32,14 @@ interface AdminDrawerProps {
   midias?: Midia[];
   onGlobalPrivacyByType?: (tipo: 'foto' | 'video' | 'video_drone', isPrivate: boolean) => Promise<void>;
   onUpdateGlobalOneDrive: (novaUrl: string) => Promise<void>;
-  onStartMapPinPick: (tipo: 'foto' | 'video_drone', tempInfo: any) => void;
+  onStartMapPinPick: (tipo: 'foto' | 'video_drone', tempInfo?: { etapaId?: string }) => void;
   pendingPinCoord: [number, number] | null;
+  pendingPinInfo?: {
+    altitude?: number;
+    kmNoTrajeto?: number | null;
+    etapaId?: string;
+    numeroDia?: number;
+  } | null;
   onSetPendingPin?: (coord: [number, number], altitude?: number, kmNoTrajeto?: number) => void;
   onResetPendingPin: () => void;
   onRefreshData: () => Promise<void>;
@@ -52,6 +58,7 @@ export default function AdminDrawer({
   onUpdateGlobalOneDrive,
   onStartMapPinPick,
   pendingPinCoord,
+  pendingPinInfo,
   onSetPendingPin,
   onResetPendingPin,
   onRefreshData,
@@ -151,7 +158,7 @@ export default function AdminDrawer({
     }
   };
 
-  // Processamento e Leitura EXIF da Foto Selecionada
+  // Processamento e Leitura EXIF da Foto Selecionada com alta compatibilidade mobile
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -162,16 +169,35 @@ export default function AdminDrawer({
 
     // Ler metadados EXIF/GPS via exifr
     try {
-      const exif = await exifr.parse(file, {
+      let lat: number | undefined;
+      let lon: number | undefined;
+      let alt: number | undefined;
+
+      // 1. Tentar ler diretamente coordenadas GPS usando exifr.gps (método dedicado e mais robusto)
+      const gpsData = await exifr.gps(file).catch(() => null);
+      if (gpsData && typeof gpsData.latitude === 'number' && typeof gpsData.longitude === 'number') {
+        lat = Number(gpsData.latitude);
+        lon = Number(gpsData.longitude);
+      }
+
+      // 2. Ler metadados complementares (altitude, etc) sem o filtro pick restritivo
+      const fullExif = await exifr.parse(file, {
         gps: true,
-        pick: ['latitude', 'longitude', 'altitude', 'DateTimeOriginal'],
-      });
+        tiff: true,
+        xmp: true,
+      }).catch(() => null);
 
-      if (exif && typeof exif.latitude === 'number' && typeof exif.longitude === 'number') {
-        const lat = Number(exif.latitude);
-        const lon = Number(exif.longitude);
-        const alt = exif.altitude ? Number(exif.altitude) : undefined;
+      if (fullExif) {
+        if (lat === undefined && typeof fullExif.latitude === 'number' && typeof fullExif.longitude === 'number') {
+          lat = Number(fullExif.latitude);
+          lon = Number(fullExif.longitude);
+        }
+        if (fullExif.altitude !== undefined && !isNaN(Number(fullExif.altitude))) {
+          alt = Number(fullExif.altitude);
+        }
+      }
 
+      if (lat !== undefined && lon !== undefined) {
         setPhotoCoords({ lat, lon, alt });
 
         // Identificar automaticamente a melhor Etapa baseada na coordenada
@@ -198,6 +224,21 @@ export default function AdminDrawer({
       setGpsStatusInfo(null);
     }
   };
+
+  // Atualizar etapa e status quando o usuário marcar uma posição no mapa
+  React.useEffect(() => {
+    if (pendingPinCoord) {
+      if (pendingPinInfo?.etapaId) {
+        setPhotoEtapa(pendingPinInfo.etapaId);
+      }
+      const diaTxt = pendingPinInfo?.numeroDia ? `Dia ${pendingPinInfo.numeroDia}` : '';
+      const kmTxt =
+        pendingPinInfo?.kmNoTrajeto !== null && pendingPinInfo?.kmNoTrajeto !== undefined
+          ? `(km ${pendingPinInfo.kmNoTrajeto.toFixed(1)})`
+          : '(marcado na rota)';
+      setGpsStatusInfo(`${diaTxt} ${kmTxt}`.trim());
+    }
+  }, [pendingPinCoord, pendingPinInfo]);
 
   // Se o usuário clicou no mapa para marcar a foto/vídeo
   const effectivePhotoLat = pendingPinCoord ? pendingPinCoord[1] : photoCoords?.lat;
@@ -235,7 +276,9 @@ export default function AdminDrawer({
 
       // Calcular o km_no_trajeto se estiver associado a uma etapa com rota
       let calculatedKm: number | null = null;
-      if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && photoEtapa) {
+      if (pendingPinInfo?.kmNoTrajeto !== undefined && pendingPinInfo?.kmNoTrajeto !== null) {
+        calculatedKm = pendingPinInfo.kmNoTrajeto;
+      } else if (effectivePhotoLat !== undefined && effectivePhotoLon !== undefined && photoEtapa) {
         const etapaObj = etapas.find((e) => e.id === photoEtapa);
         const coords = etapaObj?.geojson_rota?.geometry?.coordinates;
         if (coords && coords.length > 1) {
@@ -243,6 +286,8 @@ export default function AdminDrawer({
           calculatedKm = snapped.kmNoTrajeto;
         }
       }
+
+      const photoAlt = photoCoords?.alt !== undefined ? photoCoords.alt : (pendingPinInfo?.altitude ?? null);
 
       // 2. Inserir no banco de dados na tabela public.midias
       const { error: dbErr } = await supabase.from('midias').insert({
@@ -255,7 +300,7 @@ export default function AdminDrawer({
         url_thumbnail: publicUrl,
         latitude: effectivePhotoLat,
         longitude: effectivePhotoLon,
-        altitude: photoCoords?.alt || null,
+        altitude: photoAlt,
         km_no_trajeto: calculatedKm,
         is_private: photoPrivate,
         posicao: `POINT(${effectivePhotoLon} ${effectivePhotoLat})`,
@@ -532,11 +577,17 @@ export default function AdminDrawer({
                       )}
                     </div>
 
+                    {!effectivePhotoLat && selectedFile && (
+                      <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200">
+                        💡 Foto sem dados de GPS (comum em fotos salvas do WhatsApp ou tiradas com localização desligada). Toque no botão abaixo e toque na rota no mapa para marcar a posição.
+                      </div>
+                    )}
+
                     {gpsStatusInfo && (
                       <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-200 flex items-center gap-2">
                         <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                         <div>
-                          <strong>Georreferência Automática:</strong> {gpsStatusInfo}.
+                          <strong>Georreferência:</strong> {gpsStatusInfo}.
                           <div className="text-[10px] text-emerald-300/80">Marcador posicionado em foco no mapa.</div>
                         </div>
                       </div>
@@ -544,8 +595,8 @@ export default function AdminDrawer({
 
                     <button
                       type="button"
-                      onClick={() => onStartMapPinPick('foto', {})}
-                      className="w-full py-1.5 rounded-lg border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-xs font-medium transition flex items-center justify-center gap-1.5"
+                      onClick={() => onStartMapPinPick('foto', { etapaId: photoEtapa })}
+                      className="w-full py-2 rounded-lg border border-orange-500/60 text-orange-400 hover:bg-orange-500/10 active:bg-orange-500/20 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <MapPin className="w-3.5 h-3.5" />
                       {effectivePhotoLat ? 'Ajustar Ponto Clicando na Rota do Mapa' : 'Marcar Local no Mapa (Clique na Rota)'}
@@ -646,8 +697,8 @@ export default function AdminDrawer({
 
                     <button
                       type="button"
-                      onClick={() => onStartMapPinPick('video_drone', {})}
-                      className="w-full py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 text-xs font-medium transition flex items-center justify-center gap-1.5"
+                      onClick={() => onStartMapPinPick('video_drone', { etapaId: ytEtapa })}
+                      className="w-full py-2 rounded-lg border border-red-500/60 text-red-400 hover:bg-red-500/10 active:bg-red-500/20 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <MapPin className="w-3.5 h-3.5" />
                       Marcar Posição do Drone no Mapa

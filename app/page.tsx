@@ -64,6 +64,13 @@ export default function Home() {
   const [isAdminDrawerOpen, setIsAdminDrawerOpen] = useState<boolean>(false);
   const [isPickingPin, setIsPickingPin] = useState<boolean>(false);
   const [pendingPinCoord, setPendingPinCoord] = useState<[number, number] | null>(null);
+  const [pendingPinInfo, setPendingPinInfo] = useState<{
+    altitude?: number;
+    kmNoTrajeto?: number | null;
+    etapaId?: string;
+    numeroDia?: number;
+  } | null>(null);
+  const [targetPinEtapaId, setTargetPinEtapaId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   // Carregar dados iniciais
@@ -342,16 +349,38 @@ export default function Home() {
   };
 
   // Iniciar modo de marcação de pin no mapa
-  const handleStartMapPinPick = (_tipo: 'foto' | 'video_drone') => {
+  const handleStartMapPinPick = (
+    _tipo: 'foto' | 'video_drone',
+    tempInfo?: { etapaId?: string }
+  ) => {
     setIsPickingPin(true);
+    setTargetPinEtapaId(tempInfo?.etapaId || null);
     setIsAdminDrawerOpen(false); // Fecha a gaveta temporariamente para o usuário ver o mapa
   };
 
   // Ponto clicado no mapa
-  const handlePickPinCoord = (coord: [number, number]) => {
+  const handlePickPinCoord = (
+    coord: [number, number],
+    altitude?: number,
+    kmNoTrajeto?: number | null,
+    etapaId?: string,
+    numeroDia?: number
+  ) => {
     setPendingPinCoord(coord);
+    setPendingPinInfo({
+      altitude,
+      kmNoTrajeto,
+      etapaId,
+      numeroDia,
+    });
     setIsPickingPin(false);
     setIsAdminDrawerOpen(true); // Reabre a gaveta com a coordenada selecionada
+  };
+
+  // Cancelar modo de marcação no mapa
+  const handleCancelPickPin = () => {
+    setIsPickingPin(false);
+    setIsAdminDrawerOpen(true);
   };
 
   // Focar mídia no mapa com zoom suave e destaque ao clicar na galeria
@@ -474,6 +503,8 @@ export default function Home() {
           isAdmin={isAdmin}
           isPickingPin={isPickingPin}
           onPickPinCoord={handlePickPinCoord}
+          onCancelPickPin={handleCancelPickPin}
+          targetEtapaId={targetPinEtapaId}
           onUpdateMidiaCoord={handleUpdateMidiaCoord}
           highlightedMidiaId={hoveredMidiaId}
           mediaFilters={mediaFilters}
@@ -501,8 +532,8 @@ export default function Home() {
           </button>
         )}
 
-        {/* Gráfico de Altimetria Flutuante no Rodapé (Estilo Strava) */}
-        {diaSelecionado && etapaAtual && (
+        {/* Gráfico de Altimetria Flutuante no Rodapé (Estilo Strava) - Oculto durante marcação de pin */}
+        {diaSelecionado && etapaAtual && !isPickingPin && (
           <div className="absolute bottom-4 left-4 right-4 md:left-6 md:right-auto md:w-[480px] z-30 transition-all">
             <ElevationProfile
               etapa={etapaAtual}
@@ -568,11 +599,21 @@ export default function Home() {
         onUpdateGlobalOneDrive={handleUpdateGlobalOneDrive}
         onStartMapPinPick={handleStartMapPinPick}
         pendingPinCoord={pendingPinCoord}
-        onSetPendingPin={(coord) => {
+        pendingPinInfo={pendingPinInfo}
+        onSetPendingPin={(coord, altitude, kmNoTrajeto) => {
           setPendingPinCoord(coord);
+          setPendingPinInfo((prev) => ({
+            ...prev,
+            altitude,
+            kmNoTrajeto,
+          }));
           setMapFocus({ coord, timestamp: Date.now() });
         }}
-        onResetPendingPin={() => setPendingPinCoord(null)}
+        onResetPendingPin={() => {
+          setPendingPinCoord(null);
+          setPendingPinInfo(null);
+          setTargetPinEtapaId(null);
+        }}
         onRefreshData={loadData}
       />
     </div>
