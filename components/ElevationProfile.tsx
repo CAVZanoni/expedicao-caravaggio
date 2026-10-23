@@ -26,14 +26,22 @@ export default function ElevationProfile({
       const dataFormatada = etapa.data
         ? new Date(etapa.data + 'T00:00:00').toLocaleDateString('pt-BR')
         : '';
+      const isDia9 = etapa.numero_dia === 9;
+
       return (
         <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-4 text-center">
-          <div className="flex items-center justify-center gap-2 text-purple-400 mb-1 font-semibold text-xs md:text-sm">
+          <div
+            className={`flex items-center justify-center gap-2 mb-1 font-semibold text-xs md:text-sm ${
+              isDia9 ? 'text-rose-400' : 'text-purple-400'
+            }`}
+          >
             <Mountain className="w-4 h-4" />
             <span>Dia {etapa.numero_dia} • {etapa.titulo} {dataFormatada ? `(${dataFormatada})` : ''}</span>
           </div>
-          <p className="text-xs text-slate-400">
-            Track GPX desta etapa pendente de carregamento. Veja as fotos e vídeos desta etapa disponíveis abaixo.
+          <p className="text-xs text-slate-300">
+            {isDia9
+              ? 'Dia pós-pedal dedicado à visita às vinícolas da Serra Gaúcha (Vale dos Vinhedos). Veja os vídeos e fotos disponíveis abaixo.'
+              : 'Track GPX desta etapa pendente de carregamento. Veja as fotos e vídeos desta etapa disponíveis abaixo.'}
           </p>
         </div>
       );

@@ -261,7 +261,7 @@ export default function Header({
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
             >
-              Toda a Expedição (8 Dias)
+              Toda a Expedição ({etapas.length > 0 ? `${etapas.length} Dias` : '9 Dias'})
             </button>
 
             {etapas.map((e) => {

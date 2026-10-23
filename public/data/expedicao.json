@@ -1,6 +1,6 @@
 {
   "titulo": "Expedição Cânions & Caminho de Caravaggio",
-  "total_dias": 8,
+  "total_dias": 9,
   "distancia_total_km": 491.86,
   "ganho_elevacao_total_m": 1879,
   "data_inicio": "2026-10-09",
@@ -59251,6 +59251,48 @@
           ]
         }
       }
+    },
+    {
+      "numero_dia": 9,
+      "data": "2026-10-17",
+      "titulo": "Etapa 9 - Visita às Vinícolas (Vale dos Vinhedos)",
+      "cidade_origem": "Farroupilha",
+      "cidade_destino": "Bento Gonçalves / Vale dos Vinhedos",
+      "distancia_km": 0.0,
+      "altimetria_ganho": 0,
+      "altimetria_perda": 0,
+      "alt_min": 0,
+      "alt_max": 0,
+      "duracao_segundos": 0,
+      "cor_trajeto": "#e11d48",
+      "geojson": {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": []
+        },
+        "properties": {}
+      },
+      "geojson_rota": {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": []
+        },
+        "properties": {}
+      },
+      "perfil_altimetria": [],
+      "bounds": {
+        "min_lat": -29.25,
+        "max_lat": -29.12,
+        "min_lon": -51.65,
+        "max_lon": -51.48,
+        "centro": [
+          -29.18,
+          -51.57
+        ]
+      },
+      "id": "e9e9e9e9-1710-4000-8000-000000000009"
     }
   ]
 }
