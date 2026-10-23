@@ -137,8 +137,6 @@ export default function AdminDrawer({
   const [globalOneDrive, setGlobalOneDrive] = useState(config?.onedrive_pasta_url || '');
   const [savingConfig, setSavingConfig] = useState(false);
 
-  if (!isOpen) return null;
-
   // Lógica de Autenticação Supabase
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,6 +383,8 @@ export default function AdminDrawer({
       setSavingConfig(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm animate-fadeIn">
