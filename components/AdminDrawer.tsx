@@ -179,33 +179,60 @@ export default function AdminDrawer({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validação de formato de imagem permitindo qualquer extensão de foto
+    const isImage =
+      file.type.startsWith('image/') ||
+      /\.(jpe?g|png|webp|heic|heif|avif|tiff?)$/i.test(file.name);
+
+    if (!isImage && file.type) {
+      setPhotoError('Por favor, selecione um arquivo de imagem (JPG, PNG, HEIC, etc.).');
+      return;
+    }
+
     setSelectedFile(file);
-    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type.includes('heic');
+    const isHeic =
+      file.name.toLowerCase().endsWith('.heic') ||
+      file.name.toLowerCase().endsWith('.heif') ||
+      file.type.includes('heic');
     setIsHeicImage(isHeic);
 
     if (isHeic) {
       setPhotoPreview(null);
     } else {
-      setPhotoPreview(URL.createObjectURL(file));
+      try {
+        setPhotoPreview(URL.createObjectURL(file));
+      } catch (e) {
+        console.warn('Não foi possível gerar preview do blob:', e);
+      }
     }
 
     setPhotoTitulo(file.name.replace(/\.[^/.]+$/, ''));
 
-    // Ler metadados EXIF/GPS via exifr
+    // Ler metadados EXIF/GPS via exifr com suporte a ArrayBuffer completo
     try {
       let lat: number | undefined;
       let lon: number | undefined;
       let alt: number | undefined;
 
-      // 1. Tentar ler diretamente coordenadas GPS usando exifr.gps (método dedicado e mais robusto)
-      const gpsData = await exifr.gps(file).catch(() => null);
+      // Obter os bytes do arquivo em memória para garantir leitura dos cabeçalhos em mobile
+      let rawBuffer: ArrayBuffer | null = null;
+      try {
+        rawBuffer = await file.arrayBuffer();
+      } catch (bufErr) {
+        console.warn('Falha ao obter arrayBuffer, usando objeto File diretamente:', bufErr);
+      }
+
+      const inputSource = rawBuffer || file;
+
+      // 1. Tentar ler diretamente coordenadas GPS usando exifr.gps
+      const gpsData = await exifr.gps(inputSource).catch(() => null);
       if (gpsData && typeof gpsData.latitude === 'number' && typeof gpsData.longitude === 'number') {
         lat = Number(gpsData.latitude);
         lon = Number(gpsData.longitude);
       }
 
       // 2. Ler metadados complementares (altitude, etc) sem o filtro pick restritivo
-      const fullExif = await exifr.parse(file, {
+      const fullExif = await exifr.parse(inputSource, {
         gps: true,
         tiff: true,
         xmp: true,
@@ -600,13 +627,15 @@ export default function AdminDrawer({
                   )}
 
                   <div>
-                    <label className="text-xs font-medium text-slate-300 block mb-1">
-                      Foto do Celular / Computador
+                    <label className="text-xs font-medium text-slate-300 block mb-0.5">
+                      Arquivo da Foto (Modo Documento / Arquivo)
                     </label>
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Abre o gerenciador de arquivos do celular (sem compressão ou remoção de GPS pelo seletor de fotos).
+                    </p>
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*,.heic,.heif"
                       onChange={handleFileChange}
                       className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-500 cursor-pointer"
                     />
