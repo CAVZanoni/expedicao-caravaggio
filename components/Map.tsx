@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Etapa, Midia, MediaFilters } from '@/lib/supabase';
 import { snapToRoute, snapToRouteWithThreshold, distanceMeters } from '@/lib/geo';
-import { Camera, Video, Film, Check } from 'lucide-react';
+import { Camera, Video, Film, Check, Lock, Unlock, Undo2 } from 'lucide-react';
 import DroneIcon from '@/components/icons/DroneIcon';
 
 // SVG vetorial do novo ícone de Drone (vista frontal) para os marcadores HTML do MapLibre
@@ -75,6 +75,41 @@ export default function Map({
 
   // ID do cluster que está expandido em leque (Spiderfier)
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
+
+  // Modo de Edição / Reposicionamento de Pins (Admin)
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+
+  // Alteração pendente de reposicionamento (aguardando confirmação do admin)
+  const [pendingMove, setPendingMove] = useState<{
+    midiaId: string;
+    titulo: string;
+    originalCoord: [number, number];
+    originalAltitude?: number;
+    originalKm?: number | null;
+    newCoord: [number, number];
+    newAltitude: number;
+    newKm: number | null;
+    marker: maplibregl.Marker;
+  } | null>(null);
+
+  const handleConfirmMove = async () => {
+    if (!pendingMove) return;
+    await onUpdateMidiaCoord(
+      pendingMove.midiaId,
+      pendingMove.newCoord[1],
+      pendingMove.newCoord[0],
+      pendingMove.newAltitude,
+      pendingMove.newKm
+    );
+    setPendingMove(null);
+  };
+
+  const handleCancelMove = () => {
+    if (!pendingMove) return;
+    // Restaura a posição original no marcador
+    pendingMove.marker.setLngLat(pendingMove.originalCoord);
+    setPendingMove(null);
+  };
 
   // Inicializar o Mapa
   useEffect(() => {
@@ -523,17 +558,21 @@ export default function Map({
           }
         });
 
-        // Só permite arrastar se for 1 foto e estiver como Admin
+        // Só permite arrastar se for 1 foto, for Admin e o Modo de Edição estiver ativo
         const marker = new maplibregl.Marker({
           element: el,
           anchor: 'center',
-          draggable: isAdmin && !isMulti,
+          draggable: isAdmin && isEditMode && !isMulti,
         })
           .setLngLat(cluster.centerCoord)
           .addTo(map);
 
-        // SNAP TO ROUTE DURANTE E APÓS O ARRASTE:
-        if (isAdmin && !isMulti && routeCoords.length > 0) {
+        // SNAP TO ROUTE DURANTE E APÓS O ARRASTE (com confirmação antes de salvar):
+        if (isAdmin && isEditMode && !isMulti && routeCoords.length > 0) {
+          const originalCoord: [number, number] = [cluster.centerCoord[0], cluster.centerCoord[1]];
+          const originalAlt = primaryMidia.altitude ? Number(primaryMidia.altitude) : undefined;
+          const originalKm = primaryMidia.km_no_trajeto ? Number(primaryMidia.km_no_trajeto) : null;
+
           // No evento drag: atração magnética flexível (gruda perto, solta longe)
           marker.on('drag', () => {
             const currentLngLat = marker.getLngLat();
@@ -541,18 +580,23 @@ export default function Map({
             marker.setLngLat(snapped.coord);
           });
 
-          // No evento dragend: salva a posição final (snapada ou livre fora da rota)
+          // No evento dragend: solicita confirmação antes de atualizar o banco
           marker.on('dragend', () => {
             const currentLngLat = marker.getLngLat();
             const snapped = snapToRouteWithThreshold([currentLngLat.lng, currentLngLat.lat], routeCoords, 350);
             marker.setLngLat(snapped.coord);
-            onUpdateMidiaCoord(
-              primaryMidia.id,
-              snapped.coord[1],
-              snapped.coord[0],
-              snapped.altitude,
-              snapped.kmNoTrajeto
-            );
+
+            setPendingMove({
+              midiaId: primaryMidia.id,
+              titulo: primaryMidia.titulo || primaryMidia.arquivo_nome || 'Mídia',
+              originalCoord,
+              originalAltitude: originalAlt,
+              originalKm,
+              newCoord: snapped.coord,
+              newAltitude: snapped.altitude,
+              newKm: snapped.kmNoTrajeto,
+              marker,
+            });
           });
         }
 
@@ -614,18 +658,21 @@ export default function Map({
           `;
 
           // Marcador com OFFSET NATIVO do MapLibre: desloca o elemento pai inteiro!
-          // Permite que o Admin arraste a foto diretamente para separá-la
+          // Só permite arrastar se o Admin tiver destravado o Modo de Edição
           const itemMarker = new maplibregl.Marker({
             element: itemEl,
             anchor: 'center',
             offset: [offsetXPx, offsetYPx],
-            draggable: isAdmin,
+            draggable: isAdmin && isEditMode,
           })
             .setLngLat(centerLngLat)
             .addTo(map);
 
-          if (isAdmin && routeCoords.length > 0) {
+          if (isAdmin && isEditMode && routeCoords.length > 0) {
             let isDragging = false;
+            const originalCoord: [number, number] = [Number(m.longitude), Number(m.latitude)];
+            const originalAlt = m.altitude ? Number(m.altitude) : undefined;
+            const originalKm = m.km_no_trajeto ? Number(m.km_no_trajeto) : null;
 
             itemMarker.on('dragstart', () => {
               isDragging = true;
@@ -645,13 +692,18 @@ export default function Map({
               itemMarker.setLngLat(snapped.coord);
               // Fecha o leque para que os clusters sejam recalculados na nova posição
               setExpandedClusterId(null);
-              onUpdateMidiaCoord(
-                m.id,
-                snapped.coord[1],
-                snapped.coord[0],
-                snapped.altitude,
-                snapped.kmNoTrajeto
-              );
+
+              setPendingMove({
+                midiaId: m.id,
+                titulo: m.titulo || m.arquivo_nome || 'Mídia',
+                originalCoord,
+                originalAltitude: originalAlt,
+                originalKm,
+                newCoord: snapped.coord,
+                newAltitude: snapped.altitude,
+                newKm: snapped.kmNoTrajeto,
+                marker: itemMarker,
+              });
             });
 
             itemEl.addEventListener('click', (ev) => {
@@ -701,7 +753,7 @@ export default function Map({
         markersRef.current.push(centerMarker);
       }
     });
-  }, [midias, diaSelecionado, etapas, isAdmin, expandedClusterId, highlightedMidiaId]);
+  }, [midias, diaSelecionado, etapas, isAdmin, isEditMode, expandedClusterId, highlightedMidiaId]);
 
   // Marcador móvel do cursor de altimetria (hover sincronizado)
   useEffect(() => {
@@ -814,6 +866,80 @@ export default function Map({
             <Camera className="w-4 h-4 text-orange-400 shrink-0" />
             <span>Fotos</span>
           </button>
+
+          {/* 4. Trava de Edição de Pins (Exclusivo para Administrador) */}
+          {isAdmin && (
+            <div className="pl-1 sm:pl-1.5 border-l border-slate-800 shrink-0 flex items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditMode((prev) => !prev);
+                  if (pendingMove) handleCancelMove();
+                }}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition active:scale-95 shrink-0 border ${
+                  isEditMode
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20 animate-pulse'
+                    : 'text-slate-400 hover:text-slate-200 border-slate-800 hover:bg-slate-900/60'
+                }`}
+                title={
+                  isEditMode
+                    ? 'Clique para TRAVAR os marcadores e evitar arrastes acidentais'
+                    : 'Clique para DESTRAVAR e permitir reposicionar marcadores na rota'
+                }
+              >
+                {isEditMode ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Edição Ativa</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="hidden sm:inline">Pins Travados</span>
+                    <span className="sm:hidden">Travado</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Banner de Aviso de Modo de Edição Ativo */}
+      {isEditMode && isAdmin && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-500/95 text-slate-950 font-bold text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 z-30 border border-amber-300 animate-fadeIn backdrop-blur-md max-w-[90vw] text-center">
+          <Unlock className="w-4 h-4 shrink-0" />
+          <span>Modo de Reposicionamento Ativo: arraste o pin desejado. Clique em &apos;Pins Travados&apos; ao terminar.</span>
+        </div>
+      )}
+
+      {/* Barra Flutuante de Confirmação com Salvar e Desfazer */}
+      {pendingMove && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-950/95 border-2 border-orange-500 text-white px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-4 animate-fadeIn max-w-[92vw]">
+          <div className="text-xs">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span>📍</span> Posição ajustada: <span className="text-orange-400">{pendingMove.titulo}</span>
+            </div>
+            <div className="text-slate-400 text-[11px]">
+              {pendingMove.newKm !== null ? `Novo ponto no km ${pendingMove.newKm.toFixed(1)} da rota` : 'Ponto fora da rota oficial'}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmMove}
+              className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-orange-600/30 flex items-center gap-1"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[2.5]" /> Salvar Posição
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelMove}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition flex items-center gap-1 border border-slate-700"
+            >
+              <Undo2 className="w-3.5 h-3.5" /> Desfazer
+            </button>
+          </div>
         </div>
       )}
     </div>
